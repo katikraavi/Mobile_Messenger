@@ -121,6 +121,10 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               _buildBioField(ref, formState),
               const SizedBox(height: 24),
 
+              // T114: Privacy toggle - Phase 9
+              _buildPrivacyToggle(ref, formState),
+              const SizedBox(height: 24),
+
               // T060: Cancel button
               SizedBox(
                 width: double.infinity,
@@ -266,6 +270,26 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  /// T114, T115: Build privacy toggle - Phase 9
+  Widget _buildPrivacyToggle(WidgetRef ref, ProfileFormState formState) {
+    return Card(
+      child: SwitchListTile(
+        title: const Text(
+          'Private Profile',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        ),
+        subtitle: const Text('Only contacts can see your profile'),
+        value: formState.isPrivateProfile,
+        onChanged: (value) {
+          // T115: Update form state when toggled
+          ref
+              .read(profileFormStateProvider(widget.profile).notifier)
+              .updatePrivacy(value);
+        },
+      ),
     );
   }
 
