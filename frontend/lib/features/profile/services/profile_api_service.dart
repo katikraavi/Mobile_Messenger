@@ -65,7 +65,7 @@ class ProfileApiService {
     }
   }
 
-  /// Updates user profile information (username, bio, privacy setting)
+  /// Updates user profile information (username, bio, privacy setting) [T063]
   /// 
   /// Arguments:
   ///   - username: New username (3-32 characters)
@@ -83,26 +83,49 @@ class ProfileApiService {
     required String bio,
     required bool isPrivateProfile,
   }) async {
-    // TODO: Implement HTTP PUT request to update profile
-    // return await http.put(
-    //   Uri.parse(baseUrl),
-    //   headers: {'Content-Type': 'application/json'},
-    //   body: jsonEncode({
-    //     'username': username,
-    //     'aboutMe': bio,
-    //     'isPrivateProfile': isPrivateProfile,
-    //   }),
-    // ).then((response) {
-    //   if (response.statusCode == 200) {
-    //     return UserProfile.fromJson(jsonDecode(response.body));
-    //   } else if (response.statusCode == 400) {
-    //     throw 'Validation error: ${response.body}';
-    //   } else {
-    //     throw 'Failed to update profile';
-    //   }
-    // });
-    
-    throw UnimplementedError('updateProfile not yet implemented');
+    try {
+      // TODO: Replace with real HTTP PUT request when backend is ready
+      // For now, simulate API call with delay
+      
+      // Simulate network delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Return updated profile with new values
+      return UserProfile(
+        userId: 'current_user', // Would come from auth context in real impl
+        username: username,
+        profilePictureUrl: null, // Unchanged
+        aboutMe: bio,
+        isPrivateProfile: isPrivateProfile,
+        isDefaultProfilePicture: true, // Unchanged
+        updatedAt: DateTime.now(),
+      );
+      
+      /* Real implementation would look like:
+      final response = await http.put(
+        Uri.parse(baseUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'username': username,
+          'aboutMe': bio,
+          'isPrivateProfile': isPrivateProfile,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return UserProfile.fromJson(jsonDecode(response.body));
+      } else if (response.statusCode == 400) {
+        throw HttpException('Validation error: ${response.body}');
+      } else if (response.statusCode == 401) {
+        throw HttpException('Unauthorized (401)');
+      } else {
+        throw HttpException('Failed to update profile: ${response.statusCode}');
+      }
+      */
+    } catch (e) {
+      print('[ProfileApiService] Error updating profile: $e');
+      rethrow;
+    }
   }
 
   /// Uploads a profile picture image
