@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:frontend/features/profile/models/user_profile.dart';
 
 /// API service for profile-related HTTP requests
@@ -140,19 +142,70 @@ class ProfileApiService {
   /// HTTP: `POST /api/profile/picture` (multipart/form-data)
   /// Status: 200 = success, 400 = validation error, 401 = unauthorized, 413 = file too large, 500 = server error
   Future<UserProfile> uploadImage(File imageFile) async {
-    // TODO: Implement HTTP POST multipart request to upload image
-    // var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/picture'))
-    //   ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
-    // 
-    // var response = await request.send();
-    // if (response.statusCode == 200) {
-    //   var responseData = await response.stream.bytesToString();
-    //   return UserProfile.fromJson(jsonDecode(responseData));
-    // } else {
-    //   throw 'Failed to upload image';
-    // }
-    
-    throw UnimplementedError('uploadImage not yet implemented');
+    try {
+      // Create multipart request
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/picture'),
+      );
+
+      // Add the image file to the request
+      final stream = http.ByteStream(imageFile.openRead());
+      final length = await imageFile.length();
+      
+      final multipartFile = http.MultipartFile(
+        'image',
+        stream,
+        length,
+        filename: imageFile.path.split('/').last,
+      );
+      
+      request.files.add(multipartFile);
+
+      // Send the request
+      final response = await request.send().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw HttpException('Upload timeout after 60 seconds');
+        },
+      );
+
+      // Read response body
+      final responseBody = await response.stream.bytesToString();
+
+      // Handle response based on status code
+      if (response.statusCode == 200) {
+        try {
+          final jsonBody = jsonDecode(responseBody);
+          return UserProfile.fromJson(jsonBody);
+        } catch (e) {
+          throw FormatException(
+            'Failed to parse profile response: $e',
+            responseBody,
+          );
+        }
+      } else if (response.statusCode == 400) {
+        // Validation error (format, size, dimensions)
+        throw HttpException(
+          'Validation error: ${response.statusCode}. ${responseBody.isNotEmpty ? responseBody : 'Invalid image format or size'}',
+        );
+      } else if (response.statusCode == 401) {
+        throw HttpException('Unauthorized (401) - Please log in again');
+      } else if (response.statusCode == 413) {
+        throw HttpException('File too large (413) - Image must be smaller than 5MB');
+      } else if (response.statusCode == 500) {
+        throw HttpException(
+          'Server error (500) - Unable to process image. Please try again.',
+        );
+      } else {
+        throw HttpException(
+          'Failed to upload image: HTTP ${response.statusCode}. Response: $responseBody',
+        );
+      }
+    } catch (e) {
+      print('[ProfileApiService] Error uploading image: $e');
+      rethrow;
+    }
   }
 
   /// Deletes the profile picture (reverts to default avatar)
@@ -164,17 +217,42 @@ class ProfileApiService {
   /// HTTP: `DELETE /api/profile/picture`
   /// Status: 200 = success, 401 = unauthorized, 404 = no picture to delete, 500 = server error
   Future<UserProfile> deleteImage() async {
-    // TODO: Implement HTTP DELETE request to remove profile picture
-    // return await http.delete(Uri.parse('$baseUrl/picture')).then((response) {
-    //   if (response.statusCode == 200) {
-    //     return UserProfile.fromJson(jsonDecode(response.body));
-    //   } else if (response.statusCode == 404) {
-    //     throw 'No picture to delete';
-    //   } else {
-    //     throw 'Failed to delete picture';
-    //   }
-    // });
-    
-    throw UnimplementedError('deleteImage not yet implemented');
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/picture'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 30));
+
+      // Read response body
+      final responseBody = response.body;
+
+      // Handle response based on status code
+      if (response.statusCode == 200) {
+        try {
+          final jsonBody = jsonDecode(responseBody);
+          return UserProfile.fromJson(jsonBody);
+        } catch (e) {
+          throw FormatException(
+            'Failed to parse profile response: $e',
+            responseBody,
+          );
+        }
+      } else if (response.statusCode == 401) {
+        throw HttpException('Unauthorized (401) - Please log in again');
+      } else if (response.statusCode == 404) {
+        throw HttpException('No picture to delete (404)');
+      } else if (response.statusCode == 500) {
+        throw HttpException(
+          'Server error (500) - Unable to delete image. Please try again.',
+        );
+      } else {
+        throw HttpException(
+          'Failed to delete image: HTTP ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      print('[ProfileApiService] Error deleting image: $e');
+      rethrow;
+    }
   }
 }
