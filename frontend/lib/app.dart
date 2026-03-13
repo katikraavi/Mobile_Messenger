@@ -229,7 +229,6 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
           ProfileViewScreen(
             userId: widget.user.userId,
             isOwnProfile: true,
-            currentUser: widget.user, // Pass current user to avoid re-fetching
           ),
         ],
       ),
