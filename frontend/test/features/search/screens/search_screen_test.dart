@@ -105,3 +105,6 @@ void main() {
         expect(find.byType(AppBar), findsOneWidget);
       },
       skip: true,
+    );
+  });
+}
