@@ -33,6 +33,38 @@ class ProfileApiService {
   /// Enable debug logging [T147]
   static const bool debugLogging = true;
 
+  /// Helper method to ensure profile picture URLs are absolute
+  /// 
+  /// Converts relative URLs like `/uploads/profile_pictures/...` to absolute URLs
+  /// like `http://localhost:8081/uploads/profile_pictures/...`
+  /// 
+  /// This is needed because Image.network() requires full URLs with http scheme
+  UserProfile _ensureAbsoluteImageUrl(UserProfile profile) {
+    if (profile.profilePictureUrl == null || profile.profilePictureUrl!.isEmpty) {
+      return profile;
+    }
+    
+    final imageUrl = profile.profilePictureUrl!;
+    
+    // If URL already has http scheme, return as-is
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return profile;
+    }
+    
+    // If URL is relative, prepend the base URL
+    if (imageUrl.startsWith('/')) {
+      final baseUrl = ApiClient.getBaseUrl();
+      final cleanBaseUrl = baseUrl.replaceAll(RegExp(r'/api$'), '');
+      final absoluteUrl = cleanBaseUrl + imageUrl;
+      if (debugLogging) {
+        print('[ProfileApiService] Image URL converted: $imageUrl → $absoluteUrl');
+      }
+      return profile.copyWith(profilePictureUrl: absoluteUrl);
+    }
+    
+    return profile;
+  }
+
   /// Fetches user profile data from backend [T044]
   /// 
   /// Arguments:
@@ -57,8 +89,6 @@ class ProfileApiService {
       if (token != null) {
         headers['Authorization'] = 'Bearer $token';
       }
-
-      if (debugLogging) print('[ProfileApiService] GET $url');
       
       final response = await http.get(
         Uri.parse(url),
@@ -68,12 +98,14 @@ class ProfileApiService {
         onTimeout: () => throw HttpException('Request timeout after ${networkTimeout.inSeconds}s'),
       );
 
-      if (debugLogging) print('[ProfileApiService] Response status: ${response.statusCode}');
-
       if (response.statusCode == 200) {
         try {
           final jsonBody = jsonDecode(response.body) as Map<String, dynamic>;
-          return UserProfile.fromJson(jsonBody);
+          final profile = UserProfile.fromJson(jsonBody);
+          if (debugLogging) {
+            print('[ProfileApiService] Profile fetched - image URL: ${profile.profilePictureUrl}');
+          }
+          return _ensureAbsoluteImageUrl(profile);
         } catch (e) {
           throw FormatException('Failed to parse profile response: $e');
         }
@@ -150,7 +182,7 @@ class ProfileApiService {
       if (response.statusCode == 200) {
         try {
           final jsonBody = jsonDecode(response.body) as Map<String, dynamic>;
-          return UserProfile.fromJson(jsonBody);
+          return _ensureAbsoluteImageUrl(UserProfile.fromJson(jsonBody));
         } catch (e) {
           throw FormatException('Failed to parse profile response: $e');
         }
@@ -225,8 +257,32 @@ class ProfileApiService {
       if (response.statusCode == 200) {
         try {
           final jsonBody = jsonDecode(responseBody);
-          return UserProfile.fromJson(jsonBody);
+          
+          // Check if this is an upload response (has profilePictureUrl and userId)
+          if (jsonBody.containsKey('profilePictureUrl') && 
+              !jsonBody.containsKey('username')) {
+            // This is an upload response, not a full profile
+            // Create a minimal UserProfile with the uploaded picture URL
+            final uploadResponse = jsonBody as Map<String, dynamic>;
+            
+            // Return a UserProfile with minimal required fields
+            // The actual user data will be updated through other means
+            // Ensure the image URL is absolute (convert /uploads/... to http://...)
+            return _ensureAbsoluteImageUrl(UserProfile(
+              userId: uploadResponse['userId'] as String? ?? 'unknown',
+              username: '', // Will be ignored by caller
+              profilePictureUrl: uploadResponse['profilePictureUrl'] as String?,
+              aboutMe: '',
+              isDefaultProfilePicture: false,
+            ));
+          }
+          
+          // Otherwise, try to parse as a full profile response
+          final profileData = jsonBody['profile'] ?? jsonBody['data'] ?? jsonBody;
+          return _ensureAbsoluteImageUrl(UserProfile.fromJson(profileData as Map<String, dynamic>));
         } catch (e) {
+          print('[ProfileApiService] Error parsing profile response: $e');
+          print('[ProfileApiService] Response body: $responseBody');
           throw FormatException(
             'Failed to parse profile response: $e',
             responseBody,
@@ -292,7 +348,7 @@ class ProfileApiService {
       if (response.statusCode == 200) {
         try {
           final jsonBody = jsonDecode(responseBody);
-          return UserProfile.fromJson(jsonBody);
+          return _ensureAbsoluteImageUrl(UserProfile.fromJson(jsonBody));
         } catch (e) {
           throw FormatException(
             'Failed to parse profile response: $e',

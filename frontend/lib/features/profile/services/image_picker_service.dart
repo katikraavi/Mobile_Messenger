@@ -12,14 +12,18 @@ class ImagePickerService {
   /// Returns: XFile if user selects an image, null if cancelled or permission denied
   /// 
   /// Handles:
-  /// - Permission request (image_picker handles internal permission requests)
+  /// - Permission request via permission_handler
   /// - User cancellation (returns null)
   /// - Permission denial (returns null)
   static Future<XFile?> pickImageFromGallery() async {
     try {
       // Request photo library permission
-      // image_picker handles permission requests, but we document the flow
-      await PermissionService.requestPhotoLibraryPermission();
+      final permissionGranted = await PermissionService.requestPhotoLibraryPermission();
+      
+      if (!permissionGranted) {
+        PermissionService.showPermissionDeniedMessage('photo library');
+        return null;
+      }
       
       final pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -42,15 +46,19 @@ class ImagePickerService {
   /// Returns: XFile if user captures photo, null if cancelled or permission denied
   /// 
   /// Handles:
-  /// - Camera permission request (image_picker handles internal permission requests)
+  /// - Camera permission request via permission_handler
   /// - User cancellation (returns null)
   /// - Permission denial (returns null)
   /// - Camera not available (rethrows exception)
   static Future<XFile?> pickImageFromCamera() async {
     try {
       // Request camera permission
-      // image_picker handles permission requests, but we document the flow
-      await PermissionService.requestCameraPermission();
+      final permissionGranted = await PermissionService.requestCameraPermission();
+      
+      if (!permissionGranted) {
+        PermissionService.showPermissionDeniedMessage('camera');
+        return null;
+      }
       
       final pickedFile = await _picker.pickImage(
         source: ImageSource.camera,

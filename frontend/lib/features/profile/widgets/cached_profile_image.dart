@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
+import '../../../core/constants/asset_constants.dart';
 
 /// Profile image display with caching and efficient loading
 /// 
@@ -144,33 +145,53 @@ class CachedProfileImage extends StatelessWidget {
     );
   }
 
-  /// Build default placeholder icon
+  /// Build default placeholder with default profile picture asset
   Widget _buildPlaceholder() {
     if (isCircular) {
-      return Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.grey[300],
-        ),
-        child: Center(
-          child: Icon(
-            Icons.person,
-            size: width * 0.5,
-            color: Colors.grey[600],
-          ),
+      return ClipOval(
+        child: Image.asset(
+          AssetConstants.defaultProfilePicture,
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback to icon if asset not found
+            return Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.grey[300],
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.person,
+                  size: width * 0.5,
+                  color: Colors.grey[600],
+                ),
+              ),
+            );
+          },
         ),
       );
     }
 
-    return Container(
-      color: Colors.grey[300],
-      child: Center(
-        child: Icon(
-          Icons.image,
-          size: width * 0.4,
-          color: Colors.grey[600],
-        ),
-      ),
+    return Image.asset(
+      AssetConstants.defaultProfilePicture,
+      width: width,
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback to icon if asset not found
+        return Container(
+          color: Colors.grey[300],
+          child: Center(
+            child: Icon(
+              Icons.image,
+              size: width * 0.4,
+              color: Colors.grey[600],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:shelf/shelf.dart';
 import 'package:postgres/postgres.dart';
 import '../services/profile_service.dart';
@@ -185,9 +186,18 @@ Future<Response> updateProfile(Request request) async {
 /// Upload a new profile picture (requires authentication)
 Future<Response> uploadProfilePicture(Request request) async {
   try {
+    print('[ProfileEndpoint] ========== UPLOAD REQUEST START ==========');
+    print('[ProfileEndpoint] Method: ${request.method}');
+    print('[ProfileEndpoint] Path: ${request.url.path}');
+    print('[ProfileEndpoint] Content-Type: ${request.headers['content-type']}');
+    
     // Extract user ID from JWT token in Authorization header
     final authHeader = request.headers['authorization'] ?? '';
+    print('[ProfileEndpoint] Authorization header present: ${authHeader.isNotEmpty}');
+    print('[ProfileEndpoint] Auth header (first 50 chars): ${authHeader.substring(0, min(50, authHeader.length))}');
+    
     if (!authHeader.toLowerCase().startsWith('bearer ')) {
+      print('[ProfileEndpoint] ❌ Invalid authorization header format');
       return Response(401,
         body: jsonEncode({
           'error': 'Authentication required',
@@ -200,13 +210,17 @@ Future<Response> uploadProfilePicture(Request request) async {
     String token;
     try {
       final parts = authHeader.split(' ');
+      print('[ProfileEndpoint] Token parts count: ${parts.length}');
       if (parts.length != 2) {
+        print('[ProfileEndpoint] ❌ Invalid token parts');
         return Response(401,
           body: jsonEncode({'error': 'Invalid token format', 'status': 401}),
         );
       }
       token = parts[1];
+      print('[ProfileEndpoint] Token extracted (length: ${token.length})');
     } catch (e) {
+      print('[ProfileEndpoint] ❌ Token extraction error: $e');
       return Response(401,
         body: jsonEncode({'error': 'Token extraction failed', 'status': 401}),
       );
@@ -215,8 +229,11 @@ Future<Response> uploadProfilePicture(Request request) async {
     // Validate JWT token
     JwtPayload payload;
     try {
+      print('[ProfileEndpoint] Validating token...');
       payload = JwtService.validateToken(token);
+      print('[ProfileEndpoint] ✅ Token validated. User ID: ${payload.userId}');
     } on AuthException catch (e) {
+      print('[ProfileEndpoint] ❌ Token validation error: ${e.message}');
       return Response(401,
         body: jsonEncode({
           'error': 'Invalid token: ${e.message}',
@@ -262,15 +279,74 @@ Future<Response> uploadProfilePicture(Request request) async {
       );
     }
 
-    // For now, create uploads directory and return success
+    // Create uploads directory
     final uploadDir = Directory('uploads/profile_pictures');
     if (!uploadDir.existsSync()) {
       uploadDir.createSync(recursive: true);
     }
 
-    // Generate placeholder URL (implementation needed for actual multipart parsing)
+    // Extract image bytes from multipart form data
+    List<int> imageBytes;
+    
+    print('[ProfileEndpoint] Received multipart data: ${bodyBytes.length} bytes');
+    print('[ProfileEndpoint] Content-Type header: $contentType');
+    
+    try {
+      // Parse multipart data to extract the image file
+      imageBytes = _extractImageBytesFromMultipart(bodyBytes, contentType);
+      
+      print('[ProfileEndpoint] Extracted image bytes: ${imageBytes.length} bytes');
+      
+      if (imageBytes.isEmpty) {
+        print('[ProfileEndpoint] ❌ No image data found in multipart request');
+        return Response(400,
+          body: jsonEncode({
+            'error': 'No image data found in multipart request',
+            'status': 400,
+          }),
+        );
+      }
+    } catch (e) {
+      print('[ProfileEndpoint] ❌ Error parsing multipart data: $e');
+      return Response(400,
+        body: jsonEncode({
+          'error': 'Failed to parse image from request: $e',
+          'status': 400,
+        }),
+      );
+    }
+
+    // Generate filename with timestamp
     final fileName_ts = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final filePath = 'uploads/profile_pictures/$fileName_ts';
     final pictureUrl = '/uploads/profile_pictures/$fileName_ts';
+
+    try {
+      print('[ProfileEndpoint] Creating upload directory...');
+      // Ensure the directory exists
+      final uploadDir = Directory('uploads/profile_pictures');
+      if (!uploadDir.existsSync()) {
+        uploadDir.createSync(recursive: true);
+        print('[ProfileEndpoint] Created directories: ${uploadDir.path}');
+      }
+      
+      // Write image bytes to file
+      final file = File(filePath);
+      await file.writeAsBytes(imageBytes);
+      
+      final actualPath = file.absolute.path;
+      final actualExists = file.existsSync();
+      print('[⚡] Image saved: $filePath');
+    } catch (e) {
+      print('[ProfileEndpoint] Error saving image file: $e');
+      return Response.internalServerError(
+        body: jsonEncode({
+          'error': 'Failed to save image file',
+          'status': 500,
+          'message': e.toString(),
+        }),
+      );
+    }
 
     // Update database with picture URL
     final updatedUser = await profileService.updateProfilePicture(
@@ -383,4 +459,138 @@ Future<Response> deleteProfilePicture(Request request) async {
       }),
     );
   }
+}
+
+/// Helper function to extract image bytes from multipart/form-data
+/// 
+/// Parses the multipart-encoded request body and extracts the image file bytes
+/// This is a simple parser that looks for JPEG/PNG signatures
+List<int> _extractImageBytesFromMultipart(List<int> bodyBytes, String contentType) {
+  // Try to find the boundary
+  final boundaryMatch = RegExp(r'boundary=([^;]+)').firstMatch(contentType);
+  if (boundaryMatch == null) {
+    print('[Multipart] ❌ No boundary found in Content-Type header');
+    throw FormatException('No boundary found in multipart content-type');
+  }
+  
+  final boundary = boundaryMatch.group(1)!.trim();
+  print('[Multipart] Boundary extracted: "$boundary" (length: ${boundary.length})');
+  
+  final boundaryBytes = utf8.encode('--$boundary');
+  final endBoundaryBytes = utf8.encode('--$boundary--');
+  
+  print('[Multipart] Looking for boundary markers: "${String.fromCharCodes(boundaryBytes)}"');
+  
+  // Find all boundary positions
+  int startIdx = 0;
+  final boundaries = <int>[];
+  
+  while ((startIdx = _searchBytes(bodyBytes, boundaryBytes, startIdx)) != -1) {
+    boundaries.add(startIdx);
+    print('[Multipart] Found boundary at position: $startIdx');
+    startIdx += boundaryBytes.length;
+  }
+  
+  print('[Multipart] Total boundaries found: ${boundaries.length}');
+  
+  if (boundaries.isEmpty) {
+    // No boundaries found, return original bytes (might be raw image data)
+    print('[Multipart] ⚠️  No boundaries found, checking first bytes of body...');
+    if (bodyBytes.length >= 4) {
+      print('[Multipart] Body first bytes: ${bodyBytes.sublist(0, 4).map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ')}');
+    }
+    return bodyBytes;
+  }
+  
+  // Extract data between boundaries
+  for (int i = 0; i < boundaries.length - 1; i++) {
+    int partStart = boundaries[i] + boundaryBytes.length;
+    int partEnd = boundaries[i + 1];
+    
+    print('[Multipart] Processing part $i: from position $partStart to $partEnd');
+    
+    // Skip to after the headers (headers end with \r\n\r\n)
+    final headerEndBytes = utf8.encode('\r\n\r\n');
+    int headerEnd = _searchBytes(bodyBytes, headerEndBytes, partStart);
+    
+    if (headerEnd == -1) {
+      headerEnd = _searchBytes(bodyBytes, utf8.encode('\n\n'), partStart);
+      if (headerEnd != -1) {
+        print('[Multipart] Found header end with \\n\\n at position: $headerEnd');
+        headerEnd += 2; // Skip \n\n
+      } else {
+        print('[Multipart] ⚠️  Part $i: Could not find header end, skipping');
+        continue;
+      }
+    } else {
+      print('[Multipart] Found header end with \\r\\n\\r\\n at position: $headerEnd');
+      headerEnd += 4; // Skip \r\n\r\n
+    }
+    
+    if (headerEnd >= partEnd) {
+      print('[Multipart] ⚠️  Part $i: Header end ($headerEnd) >= part end ($partEnd), skipping');
+      continue;
+    }
+    
+    // Extract the part content (skip trailing \r\n or \n)
+    int contentEnd = partEnd;
+    if (contentEnd > 1 && bodyBytes[contentEnd - 1] == 10) { // \n
+      contentEnd--;
+      if (contentEnd > 0 && bodyBytes[contentEnd - 1] == 13) { // \r
+        contentEnd--;
+      }
+    }
+    
+    if (contentEnd > headerEnd) {
+      final part = bodyBytes.sublist(headerEnd, contentEnd);
+      print('[Multipart] Part $i extracted: ${part.length} bytes');
+      
+      if (part.length >= 4) {
+        print('[Multipart] Part $i magic bytes: ${part.sublist(0, 4).map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ')}');
+      }
+      
+      // Check if this looks like image data (JPEG: FF D8, PNG: 89 50 4E 47)
+      if (part.length >= 4) {
+        if ((part[0] == 0xFF && part[1] == 0xD8) || // JPEG
+            (part[0] == 0x89 && part[1] == 0x50 && part[2] == 0x4E && part[3] == 0x47)) { // PNG
+          print('[Multipart] ✅ Found valid image data (JPEG or PNG)');
+          return part;
+        } else {
+          print('[Multipart] ⚠️  Part $i: Found data but not JPEG/PNG signature');
+        }
+      }
+      
+      // If we found any part with data, return it
+      if (part.isNotEmpty) {
+        print('[Multipart] ⚠️  Returning part $i anyway (${part.length} bytes) despite no image signature');
+        return part;
+      }
+    } else {
+      print('[Multipart] ⚠️  Part $i: contentEnd ($contentEnd) <= headerEnd ($headerEnd), skipping');
+    }
+  }
+  
+  // If we couldn't parse multipart, return empty list
+  print('[Multipart] ❌ No valid image parts found, returning empty');
+  return [];
+}
+
+/// Helper function to search for a byte sequence within another
+/// Returns the index of the first match, or -1 if not found
+int _searchBytes(List<int> haystack, List<int> needle, [int startIdx = 0]) {
+  if (needle.isEmpty) return -1;
+  if (startIdx >= haystack.length) return -1;
+  
+  for (int i = startIdx; i <= haystack.length - needle.length; i++) {
+    bool match = true;
+    for (int j = 0; j < needle.length; j++) {
+      if (haystack[i + j] != needle[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return i;
+  }
+  
+  return -1;
 }

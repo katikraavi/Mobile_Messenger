@@ -116,6 +116,11 @@ Handler _createHandler(
       // Debug log
       print('[DEBUG] Received request: $method /$path (raw: ${request.url.path})');
 
+      // Static file serving for /uploads directory
+      if (path.startsWith('uploads/')) {
+        return _serveStaticFile(path);
+      }
+
       // Health check endpoint (public)
       if (path == 'health' && method == 'GET') {
         return Response.ok(
@@ -739,4 +744,95 @@ String _hashPassword(String password) {
 /// Verify password against hash
 bool _verifyPassword(String password, String hash) {
   return _hashPassword(password) == hash;
+}
+
+/// Serve static files from the uploads directory
+Response _serveStaticFile(String path) {
+  try {
+    // Security: prevent directory traversal attacks
+    if (path.contains('..') || path.startsWith('/')) {
+      return Response.forbidden(
+        jsonEncode({'error': 'Access denied'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    // Construct file path
+    final file = File(path);
+    
+    print('[StaticFileServer] Attempting to serve: $path');
+    print('[StaticFileServer] Absolute path: ${file.absolute.path}');
+    
+    // Check if file exists
+    if (!file.existsSync()) {
+      print('[StaticFileServer] ❌ File not found: $path');
+      // List directory contents for debugging
+      final dir = Directory('uploads/profile_pictures');
+      if (dir.existsSync()) {
+        try {
+          final files = dir.listSync();
+          print('[StaticFileServer] Files in uploads/profile_pictures: ${files.map((f) => f.path).toList()}');
+        } catch (e) {
+          print('[StaticFileServer] Error listing directory: $e');
+        }
+      }
+      
+      return Response.notFound(
+        jsonEncode({'error': 'File not found', 'path': path}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    // Check if it's actually a file (not a directory)
+    if (file.statSync().type == FileSystemEntityType.directory) {
+      return Response.forbidden(
+        jsonEncode({'error': 'Access denied'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    // Read file bytes
+    final bytes = file.readAsBytesSync();
+    
+    // Determine content type based on file extension
+    final ext = path.split('.').last.toLowerCase();
+    String contentType = 'application/octet-stream';
+    
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case 'png':
+        contentType = 'image/png';
+        break;
+      case 'gif':
+        contentType = 'image/gif';
+        break;
+      case 'webp':
+        contentType = 'image/webp';
+        break;
+      default:
+        contentType = 'application/octet-stream';
+    }
+    
+    print('[✓] Serving: $path (${bytes.length} bytes)');
+    
+    return Response.ok(
+      bytes,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000', // Cache for 1 year
+      },
+    );
+  } catch (e) {
+    print('[StaticFileServer] Error serving file: $e');
+    return Response.internalServerError(
+      body: jsonEncode({
+        'error': 'Failed to serve file',
+        'message': e.toString(),
+      }),
+      headers: {'Content-Type': 'application/json'},
+    );
+  }
 }

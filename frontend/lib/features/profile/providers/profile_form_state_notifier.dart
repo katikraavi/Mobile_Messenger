@@ -33,14 +33,27 @@ class ProfileFormStateNotifier extends StateNotifier<ProfileFormState> {
           ),
         );
 
+  /// Sanitize username by removing invalid characters in real-time
+  /// 
+  /// Removes any character that isn't alphanumeric, underscore, or hyphen
+  /// Keeps only a-z, A-Z, 0-9, _, - from the input
+  /// This prevents user from entering invalid characters that cause backend validation errors
+  String _sanitizeUsername(String value) {
+    // Keep only alphanumeric, underscore, and hyphen
+    return value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+  }
+
   /// Update username field and detect dirty state
   /// 
   /// T051: Trim input, detect if different from original,
   /// set isDirty=true if changed, clear any previous error
   /// T146: Null safety check for empty username
+  /// Real-time validation: Strip invalid characters (spaces, special chars) as user types
   void updateUsername(String value) {
     // T146: Validate input is not null (Dart non-nullable strings can't be null, but defensive programming)
-    final trimmedUsername = value.trim();
+    // Strip invalid characters in real-time (spaces, special chars, etc.)
+    final sanitized = _sanitizeUsername(value);
+    final trimmedUsername = sanitized.trim();
     
     // T149: Edge case - empty username after trim (same as no change if original is empty)
     final isDirty = trimmedUsername != originalProfile.username;
@@ -225,6 +238,15 @@ class ProfileFormStateNotifier extends StateNotifier<ProfileFormState> {
       state = state.copyWith(error: ValidationError.imageFormatInvalid);
       return false;
     }
+  }
+
+  /// Mark image as changed to enable Save button
+  /// 
+  /// Called after successful image upload to ensure form is marked dirty
+  /// so user can click Save to persist the profile changes
+  void markImageChanged() {
+    state = state.copyWith(isDirty: true);
+    ProfileLogger.logStateChange('markImageChanged', 'isDirty=true (image was changed)');
   }
 
   /// Remove pending image [T076 - complementary]

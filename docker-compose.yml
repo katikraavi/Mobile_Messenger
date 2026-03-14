@@ -53,6 +53,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./backend:/app/backend:ro
+      - uploads_data:/app/uploads
 
 networks:
   messenger-network:
@@ -60,4 +61,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local

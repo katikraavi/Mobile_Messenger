@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/constants/asset_constants.dart';
 
 /// Widget for displaying circular profile picture
 /// 
@@ -42,6 +43,12 @@ class ProfilePictureWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      print('[ProfilePictureWidget] Displaying network image: $imageUrl');
+    } else {
+      print('[ProfilePictureWidget] No image URL, showing default picture');
+    }
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -101,6 +108,10 @@ class ProfilePictureWidget extends StatelessWidget {
           );
         },
         errorBuilder: (context, error, stackTrace) {
+          // Log the error when network image fails to load
+          print('[ProfilePictureWidget] ❌ ERROR loading network image from $imageUrl');
+          print('[ProfilePictureWidget] Error: $error');
+          print(stackTrace);
           // Fallback to default avatar on error
           return _buildDefaultAvatar();
         },
@@ -110,28 +121,39 @@ class ProfilePictureWidget extends StatelessWidget {
 
   /// Builds default profile avatar [T037]
   /// 
-  /// Shows generic placeholder avatar when no custom image
+  /// Shows default profile picture asset when no custom image
   Widget _buildDefaultAvatar() {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF667eea),
-            Color(0xFF764ba2),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.person,
-          size: size * 0.5,
-          color: Colors.white,
-        ),
+    return ClipOval(
+      child: Image.asset(
+        AssetConstants.defaultProfilePicture,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to gradient if asset not found
+          return Container(
+            width: size,
+            height: size,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF667eea),
+                  Color(0xFF764ba2),
+                ],
+              ),
+            ),
+            child: Center(
+              child: Icon(
+                Icons.person,
+                size: size * 0.5,
+                color: Colors.white,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

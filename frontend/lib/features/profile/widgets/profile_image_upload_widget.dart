@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as provider_pkg;
 import '../../../utils/copyable_error_widget.dart';
+import '../../../core/constants/asset_constants.dart';
 import '../providers/profile_image_provider.dart';
+import '../providers/user_profile_provider.dart';
+import '../providers/profile_form_state_provider.dart';
 import '../services/image_picker_service.dart';
 import '../widgets/image_picker_permissions_handler.dart';
 import '../widgets/image_upload_progress_widget.dart';
@@ -10,15 +14,35 @@ import '../../auth/providers/auth_provider.dart';
 
 class ProfileImageUploadWidget extends ConsumerWidget {
   final String? currentImageUrl;
+  final String? userId;
 
   const ProfileImageUploadWidget({
     this.currentImageUrl,
+    this.userId,
     Key? key,
   }) : super(key: key);
+
+  /// Build default profile picture with asset fallback
+  Widget _buildDefaultProfilePicture() {
+    return ClipOval(
+      child: Image.asset(
+        AssetConstants.defaultProfilePicture,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const Icon(Icons.person, size: 70);
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final imageState = ref.watch(profileImageProvider);
+    
+    // Watch the updated profile to display newly uploaded image URL
+    final userProfileAsync = userId != null 
+        ? ref.watch(userProfileProvider(userId!)) 
+        : null;
 
     return Column(
       children: [
@@ -37,8 +61,8 @@ class ProfileImageUploadWidget extends ConsumerWidget {
               child: Center(
                 child: imageState.selectedImagePath != null
                     ? ClipOval(
-                  child: Image.asset(
-                    imageState.selectedImagePath!,
+                  child: Image.file(
+                    File(imageState.selectedImagePath!),
                     fit: BoxFit.cover,
                   ),
                 )
@@ -47,25 +71,45 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                   child: Image.network(
                     imageState.uploadedImageUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.person, size: 70),
+                    errorBuilder: (context, error, stackTrace) {
+                      print('[ProfileImageUploadWidget] ERROR loading uploaded image: $error');
+                      return _buildDefaultProfilePicture();
+                    },
                   ),
                 )
-                    : currentImageUrl != null
+                    // After refresh, check if profile has updated image URL
+                    : (userProfileAsync?.hasValue ?? false) && 
+                        (userProfileAsync!.value!.profilePictureUrl?.isNotEmpty ?? false) &&
+                        userProfileAsync!.value!.profilePictureUrl != currentImageUrl
+                    ? ClipOval(
+                  child: Image.network(
+                    userProfileAsync!.value!.profilePictureUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      print('[ProfileImageUploadWidget] ERROR loading refreshed profile image: $error');
+                      return _buildDefaultProfilePicture();
+                    },
+                  ),
+                )
+                    : currentImageUrl != null && currentImageUrl!.isNotEmpty
                     ? ClipOval(
                   child: Image.network(
                     currentImageUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.person, size: 70),
+                    errorBuilder: (context, error, stackTrace) {
+                      print('[ProfileImageUploadWidget] ERROR loading current profile picture: $error');
+                      return _buildDefaultProfilePicture();
+                    },
                   ),
                 )
-                    : const Icon(Icons.person, size: 70),
+                    : _buildDefaultProfilePicture(),
               ),
             ),
             // Remove button - only show if there's an uploaded image
             if (imageState.uploadedImageUrl != null ||
-                currentImageUrl != null)
+                ((userProfileAsync?.hasValue ?? false) && 
+                (userProfileAsync!.value!.profilePictureUrl?.isNotEmpty ?? false)) ||
+                (currentImageUrl != null && currentImageUrl!.isNotEmpty))
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -85,11 +129,30 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                       await ref
                           .read(profileImageProvider.notifier)
                           .deleteImage(token: token);
-                      if (context.mounted &&
-                          imageState.error == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Image deleted successfully!')),
-                        );
+                      
+                      // Refresh profile after successful delete to update image URL
+                      final deletedImageState = ref.read(profileImageProvider);
+                      if (context.mounted && deletedImageState.error == null && userId != null) {
+                        // Mark form as dirty so SAVE button is enabled (image was deleted)
+                        try {
+                          final profileAsync = ref.read(userProfileProvider(userId!));
+                          if (profileAsync.hasValue) {
+                            final userProfile = profileAsync.value!;
+                            ref.read(profileFormStateProvider(userProfile).notifier).markImageChanged();
+                          }
+                        } catch (e) {
+                          // If we can't mark it as dirty, continue anyway
+                          print('[ProfileImageUploadWidget] Error marking form dirty on delete: $e');
+                        }
+                        
+                        // Refresh the userProfileProvider to update profile after delete
+                        await ref.refresh(userProfileProvider(userId!));
+                        
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Image deleted successfully!')),
+                          );
+                        }
                       }
                     } catch (e) {
                       if (context.mounted) {
@@ -217,10 +280,33 @@ class ProfileImageUploadWidget extends ConsumerWidget {
               final token = authProvider.token;
               
               await ref.read(profileImageProvider.notifier).uploadImage(token: token);
-              if (context.mounted && imageState.error == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Image uploaded successfully!')),
-                );
+              
+              // Check updated state after upload completes
+              final updatedImageState = ref.read(profileImageProvider);
+              
+              // Refresh profile after successful upload to show new image URL
+              if (context.mounted && updatedImageState.error == null && userId != null) {
+                // Mark form as dirty so SAVE button is enabled (image has changed)
+                // Fetch the current user profile to access the form state notifier
+                try {
+                  final profileAsync = ref.read(userProfileProvider(userId!));
+                  if (profileAsync.hasValue) {
+                    final userProfile = profileAsync.value!;
+                    ref.read(profileFormStateProvider(userProfile).notifier).markImageChanged();
+                  }
+                } catch (e) {
+                  // If we can't mark it as dirty, continue anyway - profile will still be saved
+                  print('[ProfileImageUploadWidget] Error marking form dirty: $e');
+                }
+                
+                // Refresh the userProfileProvider to update profile with new image URL
+                await ref.refresh(userProfileProvider(userId!));
+                
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Image uploaded successfully!')),
+                  );
+                }
               }
             },
           ),

@@ -75,16 +75,114 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               }
             },
           ),
+          // T138: Save and Cancel buttons in AppBar for easy access
+          actions: [
+            if (formState.error != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: Tooltip(
+                    message: formState.error?.message ?? 'Fix errors to save',
+                    child: Icon(
+                      Icons.error_outline,
+                      color: Colors.red[300],
+                    ),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Center(
+                child: Tooltip(
+                  message: 'Cancel editing and lose changes',
+                  child: TextButton(
+                    onPressed: () {
+                      if (formState.isDirty) {
+                        _showCancelConfirmation(context);
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Tooltip(
+                message: 'Save profile changes',
+                child: ElevatedButton.icon(
+                  onPressed: (formState.isDirty &&
+                          !formState.isLoading &&
+                          formState.error == null)
+                      ? () => _saveProfile(context, ref, formState)
+                      : null,
+                  icon: formState.isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.check),
+                  label: const Text('Save'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // T146: Show error message prominently at the top
+              if (formState.error != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red[100],
+                    border: Border.all(color: Colors.red[400]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red[700]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fix this error to save:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              formState.error?.message ?? 'Unknown error',
+                              style: TextStyle(color: Colors.red[700]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // T079: Image upload widget
               Center(
                 child: ProfileImageUploadWidget(
                   currentImageUrl: widget.profile.profilePictureUrl,
+                  userId: widget.profile.userId,
                 ),
               ),
               const SizedBox(height: 24),
@@ -100,53 +198,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               // T114: Privacy toggle - Phase 9
               _buildPrivacyToggle(ref, formState),
               const SizedBox(height: 24),
-
-              // T060: Cancel and Save buttons side-by-side
-              // T138: Accessibility labels for cancel and save buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: Tooltip(
-                      message: 'Cancel editing and lose changes',
-                      child: OutlinedButton(
-                        onPressed: () {
-                          if (formState.isDirty) {
-                            _showCancelConfirmation(context);
-                          } else {
-                            Navigator.pop(context);
-                          }
-                        },
-                        child: const Text('Cancel'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Tooltip(
-                      message: 'Save profile changes',
-                      child: ElevatedButton.icon(
-                        onPressed: (formState.isDirty &&
-                                !formState.isLoading &&
-                                formState.error == null)
-                            ? () => _saveProfile(context, ref, formState)
-                            : null,
-                        icon: formState.isLoading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : const Icon(Icons.check),
-                        label: const Text('Save'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -183,6 +234,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           controller: _usernameController,
           decoration: InputDecoration(
             hintText: 'Enter your username',
+            helperText: 'Letters, numbers, underscores only (3-32 characters)',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -194,10 +246,30 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                     : null,
           ),
           onChanged: (value) {
-            // T057: Update form state on change
-            ref
-                .read(profileFormStateProvider(widget.profile).notifier)
-                .updateUsername(value);
+            // T057: Update form state on change with real-time validation
+            // Get the sanitized username (invalid characters removed)
+            final notifier = ref.read(profileFormStateProvider(widget.profile).notifier);
+            final sanitized = value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+            
+            // If sanitization removed characters (e.g., spaces), update controller & show feedback
+            if (sanitized != value && value.isNotEmpty) {
+              _usernameController.text = sanitized;
+              _usernameController.selection = TextSelection.fromPosition(
+                TextPosition(offset: sanitized.length),
+              );
+              
+              // Show brief feedback that invalid character was removed
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Invalid characters removed (only letters, numbers, _, - allowed)'),
+                  duration: const Duration(milliseconds: 1500),
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                ),
+              );
+            }
+            
+            notifier.updateUsername(sanitized);
             setState(() {}); // Trigger counter update
           },
           maxLength: 32,
@@ -362,11 +434,22 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         );
 
         // Refresh profile data to show updated information
-        ref.refresh(userProfileProvider(widget.profile.userId));
+        // This will fetch fresh data from the backend, including any newly uploaded image
+        try {
+          final refreshedProfile = await ref.refresh(userProfileProvider(widget.profile.userId).future);
+          print('[ProfileEditScreen] Profile refreshed successfully. Image URL: ${refreshedProfile.profilePictureUrl}');
+        } catch (e) {
+          print('[ProfileEditScreen] Error refreshing profile after save: $e');
+        }
+        
+        // Wait a brief moment to ensure UI updates with new data
+        await Future.delayed(const Duration(milliseconds: 300));
 
-        // Pop screen after successful save
-        Navigator.pop(context);
-        widget.onSaveSuccess?.call();
+        // Pop screen after successful save and profile is refreshed
+        if (mounted) {
+          Navigator.pop(context);
+          widget.onSaveSuccess?.call();
+        }
       }
     } catch (e) {
       formNotifier.setLoading(false);

@@ -29,29 +29,32 @@ class ProfileViewScreen extends ConsumerWidget {
         appBar: AppBar(title: const Text('Profile')),
         body: _buildErrorState(context, ref, error.toString()),
       ),
-      data: (profile) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Profile'),
-          actions: [
-            if (isOwnProfile)
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ProfileEditScreen(profile: profile),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-        body: _buildProfileContent(
-          context,
-          ref,
-          profile,
-        ),
-      ),
+      data: (profile) {
+        print('[ProfileViewScreen] Profile loaded - Image URL: ${profile.profilePictureUrl}');
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Profile'),
+            actions: [
+              if (isOwnProfile)
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProfileEditScreen(profile: profile),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+          body: _buildProfileContent(
+            context,
+            ref,
+            profile,
+          ),
+        );
+      },
     );
   }
 

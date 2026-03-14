@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../utils/profile_logger.dart';
 
@@ -52,6 +53,11 @@ class ImagePickerPermissionsHandler {
       }
 
       return false;
+    } on MissingPluginException catch (e) {
+      // Permission handler plugin not available on this platform
+      // Allow image_picker to handle permission internally
+      ProfileLogger.logStateChange('permissions', 'Permission handler not available, allowing image_picker to handle it');
+      return true;
     } catch (e) {
       ProfileLogger.logError('permissions', 'Camera permission request failed: $e');
       _showErrorDialog(
@@ -102,6 +108,11 @@ class ImagePickerPermissionsHandler {
       }
 
       return false;
+    } on MissingPluginException catch (e) {
+      // Permission handler plugin not available on this platform
+      // Allow image_picker to handle permission internally
+      ProfileLogger.logStateChange('permissions', 'Permission handler not available, allowing image_picker to handle it');
+      return true;
     } catch (e) {
       ProfileLogger.logError('permissions', 'Photo library permission request failed: $e');
       _showErrorDialog(
