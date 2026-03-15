@@ -6,6 +6,7 @@ import 'package:frontend/features/auth/providers/auth_provider.dart';
 import 'package:frontend/features/auth/screens/auth_flow_screen.dart';
 import 'package:frontend/features/search/screens/search_screen.dart';
 import 'package:frontend/features/profile/screens/profile_view_screen.dart';
+import 'package:frontend/features/invitations/screens/invitations_screen.dart';
 
 /// Root widget for Mobile Messenger application
 /// 
@@ -210,7 +211,11 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: _selectedIndex == 0 ? const Text('Search Users') : const Text('My Profile'),
+        title: _selectedIndex == 0 
+          ? const Text('Search Users')
+          : _selectedIndex == 1
+          ? const Text('Invitations')
+          : const Text('My Profile'),
         elevation: 0,
         actions: [
           IconButton(
@@ -224,6 +229,9 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
         children: [
           // Search Tab
           _SearchTab(user: widget.user),
+          
+          // Invitations Tab
+          const InvitationsScreen(),
           
           // Profile Tab - Show user's own profile with pre-loaded data
           ProfileViewScreen(
@@ -239,6 +247,10 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.search),
             label: 'Search',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.mail),
+            label: 'Invitations',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
