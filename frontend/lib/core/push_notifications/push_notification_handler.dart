@@ -241,7 +241,7 @@ class PushNotificationHandler {
   /// 
   /// Returns: New FCM token
   Future<String?> refreshToken() async {
-    return _firebaseMessaging.getToken(forceRefresh: true);
+    return _firebaseMessaging.getToken();
   }
 
   /// Subscribe to topic
