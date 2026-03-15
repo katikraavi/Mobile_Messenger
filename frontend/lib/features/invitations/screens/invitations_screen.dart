@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/invites_provider.dart';
+import '../services/invite_error_handler.dart';
 import 'send_invite_picker_screen.dart';
 
 /// Main invitations screen displaying pending and sent invitations in tabs
@@ -118,21 +119,47 @@ class _PendingTab extends StatelessWidget {
                                   .read(acceptInviteMutationProvider.notifier)
                                   .acceptInvite(invite.id);
                               if (context.mounted) {
+                                ref.refresh(pendingInvitesProvider);
+                                ref.refresh(pendingInviteCountProvider);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text(
                                         'Invitation accepted! Chat created.'),
                                     duration: Duration(seconds: 2),
+                                    backgroundColor: Colors.green,
                                   ),
                                 );
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
+                                final errorMessage = InviteErrorHandler.getUserFriendlyMessage(e);
+                                InviteErrorHandler.logError('Accept Invite', e);
+                                _showErrorDialog(
+                                  context,
+                                  'Accept Failed',
+                                  errorMessage,
+                                  onRetry: () async {
+                                    try {
+                                      await ref
+                                          .read(acceptInviteMutationProvider.notifier)
+                                          .acceptInvite(invite.id);
+                                      if (context.mounted) {
+                                        ref.refresh(pendingInvitesProvider);
+                                        ref.refresh(pendingInviteCountProvider);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Invitation accepted! Chat created.'),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      }
+                                    } catch (retryError) {
+                                      if (context.mounted) {
+                                        final retryMessage = InviteErrorHandler.getUserFriendlyMessage(retryError);
+                                        _showErrorDialog(context, 'Accept Failed', retryMessage);
+                                      }
+                                    }
+                                  },
                                 );
                               }
                             }
@@ -149,20 +176,46 @@ class _PendingTab extends StatelessWidget {
                                   .read(declineInviteMutationProvider.notifier)
                                   .declineInvite(invite.id);
                               if (context.mounted) {
+                                ref.refresh(pendingInvitesProvider);
+                                ref.refresh(pendingInviteCountProvider);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Invitation declined'),
                                     duration: Duration(seconds: 2),
+                                    backgroundColor: Colors.deepOrange,
                                   ),
                                 );
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
+                                final errorMessage = InviteErrorHandler.getUserFriendlyMessage(e);
+                                InviteErrorHandler.logError('Decline Invite', e);
+                                _showErrorDialog(
+                                  context,
+                                  'Decline Failed',
+                                  errorMessage,
+                                  onRetry: () async {
+                                    try {
+                                      await ref
+                                          .read(declineInviteMutationProvider.notifier)
+                                          .declineInvite(invite.id);
+                                      if (context.mounted) {
+                                        ref.refresh(pendingInvitesProvider);
+                                        ref.refresh(pendingInviteCountProvider);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Invitation declined'),
+                                            backgroundColor: Colors.deepOrange,
+                                          ),
+                                        );
+                                      }
+                                    } catch (retryError) {
+                                      if (context.mounted) {
+                                        final retryMessage = InviteErrorHandler.getUserFriendlyMessage(retryError);
+                                        _showErrorDialog(context, 'Decline Failed', retryMessage);
+                                      }
+                                    }
+                                  },
                                 );
                               }
                             }
@@ -301,4 +354,30 @@ String _formatDate(DateTime date) {
   } else {
     return '${date.month}/${date.day}/${date.year}';
   }
+}
+
+void _showErrorDialog(BuildContext context, String title, String message, {VoidCallback? onRetry}) {
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          if (onRetry != null)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onRetry();
+              },
+              child: const Text('Retry'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      );
+    },
+  );
 }
