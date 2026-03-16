@@ -1,35 +1,62 @@
-import 'package:freezed_annotation/freezed_annotation.dart';
-
-part 'chat_invite_model.freezed.dart';
-
 /// Frontend representation of a chat invitation
-@freezed
-class ChatInviteModel with _$ChatInviteModel {
-  const factory ChatInviteModel({
-    required String id,
-    required String senderId,
-    required String senderName,
-    required String? senderAvatarUrl,
-    required String recipientId,
-    required String status, // 'pending', 'accepted', 'declined'
-    required DateTime createdAt,
-    required DateTime updatedAt,
-    DateTime? deletedAt,
-  }) = _ChatInviteModel;
+class ChatInviteModel {
+  final String id;
+  final String senderId;
+  final String senderName;
+  final String? senderAvatarUrl;
+  final String recipientId;
+  final String? recipientName;
+  final String? recipientAvatarUrl;
+  final String status;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+  final DateTime? deletedAt;
+
+  const ChatInviteModel({
+    required this.id,
+    required this.senderId,
+    required this.senderName,
+    required this.senderAvatarUrl,
+    required this.recipientId,
+    required this.recipientName,
+    required this.recipientAvatarUrl,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+  });
 
   factory ChatInviteModel.fromJson(Map<String, dynamic> json) {
     return ChatInviteModel(
       id: json['id'] as String,
-      senderId: json['sender_id'] as String,
-      senderName: json['sender_name'] as String,
-      senderAvatarUrl: json['sender_avatar_url'] as String?,
-      recipientId: json['recipient_id'] as String,
+      senderId: json['senderId'] as String,
+      senderName: json['senderName'] as String,
+      senderAvatarUrl: json['senderAvatarUrl'] as String?,
+      recipientId: json['recipientId'] as String,
+      recipientName: json['recipientName'] as String?,
+      recipientAvatarUrl: json['recipientAvatarUrl'] as String?,
       status: json['status'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      deletedAt: json['deleted_at'] != null 
-        ? DateTime.parse(json['deleted_at'] as String)
-        : null,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
+      deletedAt: json['deletedAt'] != null
+          ? DateTime.parse(json['deletedAt'] as String)
+          : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'senderId': senderId,
+    'senderName': senderName,
+    'senderAvatarUrl': senderAvatarUrl,
+    'recipientId': recipientId,
+    'recipientName': recipientName,
+    'recipientAvatarUrl': recipientAvatarUrl,
+    'status': status,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt?.toIso8601String(),
+    'deletedAt': deletedAt?.toIso8601String(),
+  };
 }

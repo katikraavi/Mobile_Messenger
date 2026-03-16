@@ -40,13 +40,16 @@ dependencies:
   
   # State management
   provider: ^6.0.0
-  flutter_riverpod: ^2.4.0
+  flutter_riverpod: ^2.6.1
   
   # Secure token storage
   flutter_secure_storage: ^10.0.0
   
   # UUID generation
   uuid: ^4.0.0
+  
+  # WebSocket for real-time messaging
+  web_socket_channel: ^3.0.3
   
   # Image picker for camera and gallery
   image_picker: ^1.0.0
@@ -59,11 +62,14 @@ dependencies:
   permission_handler: ^12.0.0
   
   # Freezed code generation for immutable data classes
-  freezed_annotation: ^2.4.1
+  freezed_annotation: ^3.1.0
+  
+  # JSON serialization support
+  json_annotation: ^4.11.0
   
   # Firebase Cloud Messaging for push notifications
-  firebase_core: ^2.25.0
-  firebase_messaging: ^14.7.0
+  firebase_core: ^4.5.0
+  firebase_messaging: ^16.1.2
 
 dev_dependencies:
   flutter_test:
@@ -77,8 +83,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   
   # Code generation for Freezed models
-  freezed: ^2.4.5
-  build_runner: ^2.4.6
+  freezed: ^3.2.5
+  build_runner: ^2.12.2
+  json_serializable: ^6.13.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

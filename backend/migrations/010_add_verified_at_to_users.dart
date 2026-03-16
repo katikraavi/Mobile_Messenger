@@ -2,22 +2,42 @@ import 'package:postgres/postgres.dart';
 
 /// Migration: Add verified_at timestamp column to Users table for email verification audit trail
 Future<void> up(Connection connection) async {
-  await connection.execute('''
-    ALTER TABLE "user" 
-    ADD COLUMN verified_at TIMESTAMP WITH TIME ZONE;
-  ''');
+  try {
+    await connection.execute('''
+      ALTER TABLE "user" 
+      ADD COLUMN verified_at TIMESTAMP WITH TIME ZONE;
+    ''');
+    print('[✓] Column added to user table: verified_at');
+  } catch (e) {
+    if (e.toString().contains('already exists')) {
+      print('[⊘] Column verified_at already exists in user table');
+    } else {
+      rethrow;
+    }
+  }
+
+  try {
+    // Create indexes for verification queries
+    await connection.execute('''
+      CREATE INDEX idx_user_email_verified ON "user"(email_verified);
+    ''');
+    print('[✓] Index created: idx_user_email_verified');
+  } catch (e) {
+    if (!e.toString().contains('already exists')) {
+      rethrow;
+    }
+  }
   
-  -- Create indexes for verification queries
-  await connection.execute('''
-    CREATE INDEX idx_user_email_verified ON "user"(email_verified);
-  ''');
-  
-  await connection.execute('''
-    CREATE INDEX idx_user_verified_at ON "user"(verified_at DESC);
-  ''');
-  
-  print('[✓] Column added to user table: verified_at');
-  print('[✓] Indexes created for email verification');
+  try {
+    await connection.execute('''
+      CREATE INDEX idx_user_verified_at ON "user"(verified_at DESC);
+    ''');
+    print('[✓] Index created: idx_user_verified_at');
+  } catch (e) {
+    if (!e.toString().contains('already exists')) {
+      rethrow;
+    }
+  }
 }
 
 /// Rollback: Remove verified_at column from Users table

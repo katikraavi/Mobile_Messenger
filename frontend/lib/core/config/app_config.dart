@@ -8,8 +8,8 @@ class AppConfig {
   
   // Backend configuration
   static const String backendUrlAndroid = 'http://host.docker.internal:8081'; // Android emulator
-  static const String backendUrlIOS = 'http://localhost:8081'; // iOS simulator
-  static const String backendUrlPhysicalDevice = 'http://[YOUR_DEVICE_IP]:8081'; // Update with actual IP
+  static const String backendUrlIOS = 'http://localhost:8081'; // iOS simulator  
+  static const String backendUrlPhysicalDevice = 'http://localhost:8081'; // Linux/macOS/Windows - Docker is accessible via localhost
   
   // API configuration
   static const int connectionTimeoutSeconds = 30;

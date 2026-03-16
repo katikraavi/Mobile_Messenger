@@ -1,84 +1,137 @@
-import 'enums.dart';
+import 'package:json_annotation/json_annotation.dart';
 
-/// Message model representing a single message in a chat
+part 'message_model.g.dart';
+
+/// Represents a single message within a chat
+/// 
+/// Message content is always stored encrypted (end-to-end encryption).
+/// The encrypted_content is Base64-encoded ChaCha20-Poly1305 encrypted plaintext.
+@JsonSerializable()
 class Message {
-  final String id; // UUID
+  final String id;
+  
+  /// UUID of the chat this message belongs to
+  @JsonKey(name: 'chat_id')
   final String chatId;
+  
+  /// UUID of the user who sent this message
+  @JsonKey(name: 'sender_id')
   final String senderId;
+  
+  /// UUID of the intended recipient (for 1-to-1 messaging)
+  @JsonKey(name: 'recipient_id')
+  final String? recipientId;
+  
+  /// Sender's username (for display in UI)
+  @JsonKey(name: 'sender_username')
+  String? senderUsername;
+  
+  /// Sender's profile picture URL (for display in UI)
+  @JsonKey(name: 'sender_avatar_url')
+  String? senderAvatarUrl;
+  
+  /// Base64-encoded ChaCha20-Poly1305 encrypted message content
+  /// Never store plaintext in database
+  @JsonKey(name: 'encrypted_content')
   final String encryptedContent;
-  final String? mediaUrl;
-  final String? mediaType;
-  final MessageStatus status;
+  
+  /// Current delivery status: pending, sent, delivered, read
+  @JsonKey(name: 'status')
+  final String status;
+  
+  /// Message creation timestamp
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
+  
+  /// When message was last edited (null if never edited)
+  @JsonKey(name: 'edited_at')
   final DateTime? editedAt;
+  
+  /// When message was deleted (null if not deleted)
+  @JsonKey(name: 'deleted_at')
+  final DateTime? deletedAt;
+  
+  /// Whether this message is soft-deleted
+  @JsonKey(name: 'is_deleted')
+  final bool isDeleted;
+
+  /// Decrypted plaintext (in-memory only, never persisted)
+  /// This is populated after decryption by the service layer
+  @JsonKey(ignore: true)
+  String? decryptedContent;
 
   Message({
     required this.id,
     required this.chatId,
     required this.senderId,
+    this.recipientId,
     required this.encryptedContent,
-    this.mediaUrl,
-    this.mediaType,
-    required this.status,
+    this.status = 'sent',
     required this.createdAt,
     this.editedAt,
+    this.deletedAt,
+    this.isDeleted = false,
+    this.decryptedContent,
   });
 
-  /// Check if message has been edited
-  bool get isEdited => editedAt != null;
+  /// JSON serialization factory
+  factory Message.fromJson(Map<String, dynamic> json) => _$MessageFromJson(json);
+  
+  /// Convert to JSON (encrypted_content only, decryptedContent is never serialized)
+  Map<String, dynamic> toJson() => _$MessageToJson(this);
 
-  /// Get time since creation
-  Duration get ageSinceCreation => DateTime.now().difference(createdAt);
+  /// Check if this message was sent by the specified user
+  bool sentByUser(String userId) => senderId == userId;
+  
+  /// Check if this message is deleted
+  bool get deleted => isDeleted;
+  
+  /// Check if this message has been edited
+  bool get edited => editedAt != null;
 
-  /// Serialize to JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'chat_id': chatId,
-      'sender_id': senderId,
-      'encrypted_content': encryptedContent,
-      'media_url': mediaUrl,
-      'media_type': mediaType,
-      'status': status.toDbString(),
-      'created_at': createdAt.toIso8601String(),
-      'edited_at': editedAt?.toIso8601String(),
-    };
-  }
-
-  /// Deserialize from JSON
-  factory Message.fromJson(Map<String, dynamic> json) {
-    return Message(
-      id: json['id'] as String,
-      chatId: json['chat_id'] as String,
-      senderId: json['sender_id'] as String,
-      encryptedContent: json['encrypted_content'] as String,
-      mediaUrl: json['media_url'] as String?,
-      mediaType: json['media_type'] as String?,
-      status: MessageStatusExtension.fromString(json['status'] as String),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      editedAt: json['edited_at'] != null ? DateTime.parse(json['edited_at'] as String) : null,
-    );
-  }
-
-  /// Create copy with modifications
-  Message copyWith({
-    String? encryptedContent,
-    MessageStatus? status,
-    DateTime? editedAt,
-  }) {
-    return Message(
-      id: id,
-      chatId: chatId,
-      senderId: senderId,
-      encryptedContent: encryptedContent ?? this.encryptedContent,
-      mediaUrl: mediaUrl,
-      mediaType: mediaType,
-      status: status ?? this.status,
-      createdAt: createdAt,
-      editedAt: editedAt ?? (encryptedContent != null ? DateTime.now() : this.editedAt),
-    );
+  /// Get display timestamp formatted for UI
+  /// Shows time (HH:MM) for today's messages, shows date (M/D) for older messages
+  String getDisplayTime() {
+    final now = DateTime.now();
+    if (createdAt.day == now.day && 
+        createdAt.month == now.month && 
+        createdAt.year == now.year) {
+      return '${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
+    }
+    return '${createdAt.month}/${createdAt.day}';
   }
 
   @override
-  String toString() => 'Message(id=$id, sender=$senderId, status=${status.toDbString()}, edited=$isEdited)';
+  String toString() => 'Message(id: $id, chatId: $chatId, sender: $senderId, '
+      'recipient: $recipientId, status: $status, encrypted: ${encryptedContent.length} chars, '
+      'created: ${createdAt.toIso8601String()}, deleted: $isDeleted)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Message &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          chatId == other.chatId &&
+          senderId == other.senderId &&
+          recipientId == other.recipientId &&
+          encryptedContent == other.encryptedContent &&
+          status == other.status &&
+          createdAt == other.createdAt &&
+          editedAt == other.editedAt &&
+          deletedAt == other.deletedAt &&
+          isDeleted == other.isDeleted;
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      chatId.hashCode ^
+      senderId.hashCode ^
+      recipientId.hashCode ^
+      encryptedContent.hashCode ^
+      status.hashCode ^
+      createdAt.hashCode ^
+      editedAt.hashCode ^
+      deletedAt.hashCode ^
+      isDeleted.hashCode;
 }

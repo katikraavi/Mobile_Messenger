@@ -77,11 +77,27 @@ mobile-messenger/
 - [x] Health check endpoint (`GET /health`)
 - [x] Flutter app with connection retry logic
 
-### Phase 2+: Roadmap 📋
-- [ ] User authentication (JWT)
-- [ ] User profiles
-- [ ] Real-time messaging (WebSockets)
-- [ ] Invite system
+### Phase 2: Authentication & User System ✅
+- [x] User registration and login (JWT)
+- [x] Password reset functionality
+- [x] Email verification system
+- [x] User profiles and search
+
+### Phase 3: Chat Invite System ✅
+- [x] User search and discovery
+- [x] Send chat invitations to users
+- [x] Accept/decline pending invitations
+- [x] View sent and received invites
+- [x] Invite status tracking
+- [x] Mock API implementation for testing
+
+### Phase 4+: Roadmap 📋
+- [ ] Database integration for invites
+- [ ] Real-time notifications
+- [ ] Chat creation on invite acceptance
+- [ ] Message encryption
+- [ ] Media sharing in chats
+- [ ] Push notifications
 - [ ] Production deployment
 
 ## Commands
@@ -138,6 +154,18 @@ dart run lib/server.dart
 dart test
 ```
 
+### Testing Invite System
+
+```bash
+# Test invite endpoints via API
+./test_invites.sh
+
+# For comprehensive testing guide, see:
+# - INVITE_TESTING_GUIDE.md (complete reference)
+# - QUICK_START_TESTING.md (quick reference)
+# - TESTING_INDEX.md (all testing documentation)
+```
+
 ## Documentation
 
 - [Quickstart Guide](specs/001-messenger-init/quickstart.md) - 5-minute setup guide
@@ -145,6 +173,9 @@ dart test
 - [Data Model](specs/001-messenger-init/data-model.md) - Database schema and models
 - [Architecture Plan](specs/001-messenger-init/plan.md) - Technical architecture
 - [Research & Decisions](specs/001-messenger-init/research.md) - Technology choices rationale
+- [Invite System Testing](INVITE_TESTING_GUIDE.md) - Complete guide for testing the chat invite system
+- [Quick Start Testing](QUICK_START_TESTING.md) - Quick testing reference
+- [Testing Index](TESTING_INDEX.md) - Index of all testing documentation
 
 ## Troubleshooting
 

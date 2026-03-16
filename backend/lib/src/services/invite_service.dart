@@ -53,16 +53,15 @@ class InviteService {
 
     await connection.execute(
       Sql.named(
-        '''INSERT INTO chat_invites (id, sender_id, recipient_id, status, created_at, updated_at)
-           VALUES (@id, @sender_id, @recipient_id, @status, @created_at, @updated_at)''',
+        '''INSERT INTO invites (id, sender_id, receiver_id, status, created_at)
+           VALUES (@id, @sender_id, @receiver_id, @status, @created_at)''',
       ),
       parameters: {
         'id': id,
         'sender_id': senderId,
-        'recipient_id': recipientId,
+        'receiver_id': recipientId,
         'status': 'pending',
         'created_at': now,
-        'updated_at': now,
       },
     );
 
@@ -82,20 +81,26 @@ class InviteService {
     final result = await connection.execute(
       Sql.named(
         '''SELECT 
-             i.id, i.sender_id, i.recipient_id, i.status, 
-             i.created_at, i.updated_at, i.deleted_at,
-             u.username, u.avatar_url
-           FROM chat_invites i
-           JOIN "user" u ON i.sender_id = u.id
-           WHERE i.recipient_id = @recipient_id 
+             i.id, i.sender_id, i.receiver_id, i.status, 
+             i.created_at, i.responded_at,
+             u.username, u.profile_picture_url
+           FROM invites i
+           JOIN users u ON i.sender_id = u.id
+           WHERE i.receiver_id = @receiver_id 
              AND i.status = 'pending'
-             AND i.deleted_at IS NULL
            ORDER BY i.created_at DESC''',
       ),
-      parameters: {'recipient_id': recipientId},
+      parameters: {'receiver_id': recipientId},
     );
 
-    return result.map((row) => row.toColumnMap() as Map<String, dynamic>).toList();
+    return result.map((row) {
+      final map = row.toColumnMap() as Map<String, dynamic>;
+      // Normalize column names for frontend compatibility
+      map['recipient_id'] = map.remove('receiver_id');
+      map['updated_at'] = map.remove('responded_at');
+      map['deleted_at'] = null;
+      return map;
+    }).toList();
   }
 
   /// Get all sent invitations for a sender (FR-015)
@@ -103,17 +108,23 @@ class InviteService {
     final result = await connection.execute(
       Sql.named(
         '''SELECT 
-             i.id, i.sender_id, i.recipient_id, i.status, 
-             i.created_at, i.updated_at, i.deleted_at
-           FROM chat_invites i
+             i.id, i.sender_id, i.receiver_id, i.status, 
+             i.created_at, i.responded_at
+           FROM invites i
            WHERE i.sender_id = @sender_id 
-             AND i.deleted_at IS NULL
            ORDER BY i.created_at DESC''',
       ),
       parameters: {'sender_id': senderId},
     );
 
-    return result.map((row) => row.toColumnMap() as Map<String, dynamic>).toList();
+    return result.map((row) {
+      final map = row.toColumnMap() as Map<String, dynamic>;
+      // Normalize column names for frontend compatibility
+      map['recipient_id'] = map.remove('receiver_id');
+      map['updated_at'] = map.remove('responded_at');
+      map['deleted_at'] = null;
+      return map;
+    }).toList();
   }
 
   /// Get count of pending invitations for a recipient (for badge - FR-012, FR-014)
@@ -121,12 +132,11 @@ class InviteService {
     final result = await connection.execute(
       Sql.named(
         '''SELECT COUNT(*) as count
-           FROM chat_invites
-           WHERE recipient_id = @recipient_id 
-             AND status = 'pending'
-             AND deleted_at IS NULL''',
+           FROM invites
+           WHERE receiver_id = @receiver_id 
+             AND status = 'pending' ''',
       ),
-      parameters: {'recipient_id': recipientId},
+      parameters: {'receiver_id': recipientId},
     );
 
     final row = result.first.toColumnMap();
@@ -146,20 +156,30 @@ class InviteService {
 
     final now = DateTime.now().toUtc();
     
-    // Update invite status to accepted and mark deleted (FR-008: remove from pending)
+    // Update invite status to accepted
     await connection.execute(
       Sql.named(
-        '''UPDATE chat_invites 
-           SET status = @status, updated_at = @updated_at, deleted_at = @deleted_at
+        '''UPDATE invites 
+           SET status = @status, responded_at = @responded_at
            WHERE id = @id''',
       ),
       parameters: {
         'id': inviteId,
         'status': 'accepted',
-        'updated_at': now,
-        'deleted_at': now,
+        'responded_at': now,
       },
     );
+
+    // Create a chat between the two users
+    print('[InviteService] Creating chat for accepted invite ${invite.id}...');
+    try {
+      print('[InviteService] Calling _createChatBetweenUsers(${invite.senderId}, ${invite.recipientId})');
+      await _createChatBetweenUsers(invite.senderId, invite.recipientId);
+      print('[InviteService] ✓ Chat creation completed');
+    } catch (e) {
+      print('[InviteService] ✗ Failed to create chat after accepting invite: $e');
+      // Don't fail the accept operation, but log the warning
+    }
 
     return ChatInvite(
       id: invite.id,
@@ -168,7 +188,7 @@ class InviteService {
       status: 'accepted',
       createdAt: invite.createdAt,
       updatedAt: now,
-      deletedAt: now,
+      deletedAt: null,
     );
   }
 
@@ -185,18 +205,17 @@ class InviteService {
 
     final now = DateTime.now().toUtc();
 
-    // Update invite status to declined and mark deleted (FR-008: remove from pending)
+    // Update invite status to declined
     await connection.execute(
       Sql.named(
-        '''UPDATE chat_invites 
-           SET status = @status, updated_at = @updated_at, deleted_at = @deleted_at
+        '''UPDATE invites 
+           SET status = @status, responded_at = @responded_at
            WHERE id = @id''',
       ),
       parameters: {
         'id': inviteId,
         'status': 'declined',
-        'updated_at': now,
-        'deleted_at': now,
+        'responded_at': now,
       },
     );
 
@@ -207,7 +226,7 @@ class InviteService {
       status: 'declined',
       createdAt: invite.createdAt,
       updatedAt: now,
-      deletedAt: now,
+      deletedAt: null,
     );
   }
 
@@ -215,7 +234,7 @@ class InviteService {
 
   Future<bool> _userExists(String userId) async {
     final result = await connection.execute(
-      Sql.named('SELECT 1 FROM "user" WHERE id = @id LIMIT 1'),
+      Sql.named('SELECT 1 FROM users WHERE id = @id LIMIT 1'),
       parameters: {'id': userId},
     );
     return result.isNotEmpty;
@@ -224,9 +243,9 @@ class InviteService {
   Future<bool> _chatExistsBetweenUsers(String userId1, String userId2) async {
     final result = await connection.execute(
       Sql.named(
-        '''SELECT 1 FROM chat 
-           WHERE (participant1_id = @user1 AND participant2_id = @user2)
-              OR (participant1_id = @user2 AND participant2_id = @user1)
+        '''SELECT 1 FROM chats 
+           WHERE (participant_1_id = @user1 AND participant_2_id = @user2)
+              OR (participant_1_id = @user2 AND participant_2_id = @user1)
            LIMIT 1''',
       ),
       parameters: {'user1': userId1, 'user2': userId2},
@@ -237,14 +256,13 @@ class InviteService {
   Future<ChatInvite?> _getExistingPendingInvite(String senderId, String recipientId) async {
     final result = await connection.execute(
       Sql.named(
-        '''SELECT * FROM chat_invites 
+        '''SELECT * FROM invites 
            WHERE sender_id = @sender_id 
-             AND recipient_id = @recipient_id 
+             AND receiver_id = @receiver_id 
              AND status = 'pending'
-             AND deleted_at IS NULL
            LIMIT 1''',
       ),
-      parameters: {'sender_id': senderId, 'recipient_id': recipientId},
+      parameters: {'sender_id': senderId, 'receiver_id': recipientId},
     );
 
     if (result.isEmpty) return null;
@@ -253,17 +271,17 @@ class InviteService {
     return ChatInvite(
       id: row['id'] as String,
       senderId: row['sender_id'] as String,
-      recipientId: row['recipient_id'] as String,
+      recipientId: row['receiver_id'] as String,
       status: row['status'] as String,
       createdAt: row['created_at'] as DateTime,
-      updatedAt: row['updated_at'] as DateTime,
-      deletedAt: row['deleted_at'] as DateTime?,
+      updatedAt: row['responded_at'] as DateTime?,
+      deletedAt: null,
     );
   }
 
   Future<ChatInvite?> _getInviteById(String inviteId) async {
     final result = await connection.execute(
-      Sql.named('SELECT * FROM chat_invites WHERE id = @id LIMIT 1'),
+      Sql.named('SELECT * FROM invites WHERE id = @id LIMIT 1'),
       parameters: {'id': inviteId},
     );
 
@@ -273,11 +291,48 @@ class InviteService {
     return ChatInvite(
       id: row['id'] as String,
       senderId: row['sender_id'] as String,
-      recipientId: row['recipient_id'] as String,
+      recipientId: row['receiver_id'] as String,
       status: row['status'] as String,
       createdAt: row['created_at'] as DateTime,
-      updatedAt: row['updated_at'] as DateTime,
-      deletedAt: row['deleted_at'] as DateTime?,
+      updatedAt: row['responded_at'] as DateTime?,
+      deletedAt: null,
     );
+  }
+
+  /// Create a 1:1 chat between two users for accepted invitation
+  /// 
+  /// Helper method to create a chat when an invitation is accepted.
+  /// The chat will appear in both users' messenger tabs automatically.
+  Future<void> _createChatBetweenUsers(String userId1, String userId2) async {
+    try {
+      // Ensure participant_1_id < participant_2_id for consistency
+      final participant1Id = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
+      final participant2Id = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
+
+      final now = DateTime.now().toUtc();
+      
+      // Insert chat or update if already exists
+      await connection.execute(
+        Sql.named(
+          '''INSERT INTO chats 
+             (id, participant_1_id, participant_2_id, is_participant_1_archived, 
+              is_participant_2_archived, created_at, updated_at)
+             VALUES (@id, @participant1, @participant2, @archived1, @archived2, @now, @now)
+             ON CONFLICT (participant_1_id, participant_2_id) 
+             DO UPDATE SET updated_at = @now''',
+        ),
+        parameters: {
+          'id': const Uuid().v4(),
+          'participant1': participant1Id,
+          'participant2': participant2Id,
+          'archived1': false,
+          'archived2': false,
+          'now': now,
+        },
+      );
+      print('[InviteService] ✓ Chat created between $userId1 and $userId2');
+    } catch (e) {
+      throw Exception('Failed to create chat between users: $e');
+    }
   }
 }

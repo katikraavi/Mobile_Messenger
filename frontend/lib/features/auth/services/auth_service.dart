@@ -17,6 +17,7 @@ class AuthException implements Exception {
 /// 
 /// Handles API communication with the backend for registration, login, and session validation
 class AuthService {
+  // Using localhost to connect to Docker container (accessible via 127.0.0.1 on host)
   static const String _baseUrl = 'http://localhost:8081';
 
   /// Get the base URL (can be overridden for testing)

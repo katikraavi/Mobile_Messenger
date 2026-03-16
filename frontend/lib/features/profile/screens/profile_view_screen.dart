@@ -4,8 +4,9 @@ import '../models/user_profile.dart';
 import '../providers/user_profile_provider.dart';
 import '../widgets/profile_picture_widget.dart';
 import 'profile_edit_screen.dart';
+import '../../invitations/services/invite_api_service.dart';
 
-class ProfileViewScreen extends ConsumerWidget {
+class ProfileViewScreen extends StatefulWidget {
   final String userId;
   final bool isOwnProfile;
 
@@ -16,43 +17,93 @@ class ProfileViewScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the profile provider for the given userId
-    final profileAsync = ref.watch(userProfileProvider(userId));
+  State<ProfileViewScreen> createState() => _ProfileViewScreenState();
+}
 
-    return profileAsync.when(
-      loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
-        body: _buildLoadingSkeleton(context),
-      ),
-      error: (error, stackTrace) => Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
-        body: _buildErrorState(context, ref, error.toString()),
-      ),
-      data: (profile) {
-        print('[ProfileViewScreen] Profile loaded - Image URL: ${profile.profilePictureUrl}');
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Profile'),
-            actions: [
-              if (isOwnProfile)
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProfileEditScreen(profile: profile),
-                      ),
-                    );
-                  },
-                ),
-            ],
+class _ProfileViewScreenState extends State<ProfileViewScreen> {
+  late InviteApiService _inviteService;
+  bool _isLoadingInvite = false;
+  String? _inviteError;
+
+  @override
+  void initState() {
+    super.initState();
+    _inviteService = InviteApiService(baseUrl: 'http://localhost:8081');
+  }
+
+  Future<void> _sendInvite() async {
+    setState(() {
+      _isLoadingInvite = true;
+      _inviteError = null;
+    });
+
+    try {
+      await _inviteService.sendInvite(widget.userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invitation sent!')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _inviteError = e.toString();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingInvite = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, _) {
+        // Watch the profile provider for the given userId
+        final profileAsync = ref.watch(userProfileProvider(widget.userId));
+
+        return profileAsync.when(
+          loading: () => Scaffold(
+            appBar: AppBar(title: const Text('Profile')),
+            body: _buildLoadingSkeleton(context),
           ),
-          body: _buildProfileContent(
-            context,
-            ref,
-            profile,
+          error: (error, stackTrace) => Scaffold(
+            appBar: AppBar(title: const Text('Profile')),
+            body: _buildErrorState(context, ref, error.toString()),
           ),
+          data: (profile) {
+            print('[ProfileViewScreen] Profile loaded - Image URL: ${profile.profilePictureUrl}');
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Profile'),
+                actions: [
+                  if (widget.isOwnProfile)
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ProfileEditScreen(profile: profile),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+              body: _buildProfileContent(
+                context,
+                ref,
+                profile,
+              ),
+            );
+          },
         );
       },
     );
@@ -125,7 +176,7 @@ class ProfileViewScreen extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async {
         // ignore: unused_result
-        ref.refresh(userProfileProvider(userId));
+        ref.refresh(userProfileProvider(widget.userId));
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -159,7 +210,7 @@ class ProfileViewScreen extends ConsumerWidget {
                 ElevatedButton.icon(
                   onPressed: () {
                     // ignore: unused_result
-                    ref.refresh(userProfileProvider(userId));
+                    ref.refresh(userProfileProvider(widget.userId));
                   },
                   icon: const Icon(Icons.refresh),
                   label: const Text('Try Again'),
@@ -182,7 +233,7 @@ class ProfileViewScreen extends ConsumerWidget {
       onRefresh: () async {
         // Refresh profile via Riverpod
         // ignore: unused_result
-        ref.refresh(userProfileProvider(userId));
+        ref.refresh(userProfileProvider(widget.userId));
         // Wait a bit for the refresh to show
         await Future.delayed(const Duration(milliseconds: 500));
       },
@@ -196,7 +247,7 @@ class ProfileViewScreen extends ConsumerWidget {
             ProfilePictureWidget(
               imageUrl: profile.profilePictureUrl,
               size: 120,
-              onTap: isOwnProfile
+              onTap: widget.isOwnProfile
                   ? () {
                       // Will implement picture upload in Phase 6
                     }
@@ -260,7 +311,7 @@ class ProfileViewScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Edit Profile button (for own profile)
-            if (isOwnProfile)
+            if (widget.isOwnProfile)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -273,6 +324,55 @@ class ProfileViewScreen extends ConsumerWidget {
                   },
                   icon: const Icon(Icons.edit),
                   label: const Text('Edit Profile'),
+                ),
+              ),
+
+            // Invite button (for other profiles)
+            if (!widget.isOwnProfile)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoadingInvite ? null : _sendInvite,
+                  icon: _isLoadingInvite
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Icon(Icons.person_add),
+                  label: _isLoadingInvite
+                      ? const Text('Sending...')
+                      : const Text('Send Invitation'),
+                ),
+              ),
+
+            if (_inviteError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[100],
+                    border: Border.all(color: Colors.red[400]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error, color: Colors.red[700]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _inviteError!,
+                          style: TextStyle(color: Colors.red[700]),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],

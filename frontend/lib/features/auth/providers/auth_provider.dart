@@ -162,6 +162,9 @@ class AuthProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    
+    // Note: Riverpod providers will auto-invalidate on next check
+    // because the auth context has changed
   }
 
   /// Clear error message

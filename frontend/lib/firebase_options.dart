@@ -40,10 +40,7 @@ class DefaultFirebaseOptions {
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return linux;
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
@@ -84,5 +81,13 @@ class DefaultFirebaseOptions {
     projectId: 'messenger-dev',
     storageBucket: 'messenger-dev.appspot.com',
     iosBundleId: 'com.example.frontend',
+  );
+
+  static const FirebaseOptions linux = FirebaseOptions(
+    apiKey: 'AIzaSyDummyKeyForLinux',
+    appId: '1:000:linux:0000000000',
+    messagingSenderId: '000000000000',
+    projectId: 'messenger-dev',
+    storageBucket: 'messenger-dev.appspot.com',
   );
 }

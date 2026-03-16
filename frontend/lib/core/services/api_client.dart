@@ -17,7 +17,7 @@ class ApiClient {
   /// Initialize API client with backend URL
   /// 
   /// Automatically detects platform and sets appropriate backend URL:
-  /// - Android emulator: http://host.docker.internal:8081
+  /// - Android emulator: http://172.31.195.26:8081 (WSL2 host IP for Docker backend)
   /// - iOS simulator: http://localhost:8081
   /// - Linux/Web: http://localhost:8081
   /// - Physical device: http://localhost:8081 (configure for your network)
@@ -26,9 +26,12 @@ class ApiClient {
     
     // Set base URL based on platform
     if (Platform.isAndroid) {
-      _baseUrl = 'http://host.docker.internal:8081';
+      // Android emulator needs to reach WSL2 host where Docker backend is running
+      // Using WSL2 host IP: 172.31.195.26
+      _baseUrl = 'http://172.31.195.26:8081';
     } else {
       // For iOS, Linux, macOS, Windows, Web: use localhost
+      // Docker containers are accessible via localhost:8081 on the host
       _baseUrl = 'http://localhost:8081';
     }
     

@@ -43,12 +43,6 @@ class ProfilePictureWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
-      print('[ProfilePictureWidget] Displaying network image: $imageUrl');
-    } else {
-      print('[ProfilePictureWidget] No image URL, showing default picture');
-    }
-    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -108,10 +102,8 @@ class ProfilePictureWidget extends StatelessWidget {
           );
         },
         errorBuilder: (context, error, stackTrace) {
-          // Log the error when network image fails to load
-          print('[ProfilePictureWidget] ❌ ERROR loading network image from $imageUrl');
-          print('[ProfilePictureWidget] Error: $error');
-          print(stackTrace);
+          // Silently fall back to default avatar on error (common for missing profile pics)
+          print('[ProfilePictureWidget] Using default avatar (image not available)');
           // Fallback to default avatar on error
           return _buildDefaultAvatar();
         },

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../features/search/providers/search_results_provider.dart';
+import '../../../features/search/services/search_service.dart';
 import '../providers/invites_provider.dart';
 import '../services/invite_error_handler.dart';
 
@@ -15,44 +17,96 @@ class SendInvitePickerScreen extends ConsumerStatefulWidget {
 
 class _SendInvitePickerScreenState extends ConsumerState<SendInvitePickerScreen> {
   final _searchController = TextEditingController();
-  String? _selectedUserId;
-  List<Map<String, String>> _filteredUsers = [];
-
-  // Placeholder users - TODO: Replace with actual user search from backend
-  final _allUsers = [
-    {'id': 'user-1', 'name': 'Alice Johnson', 'avatar': '👩'},
-    {'id': 'user-2', 'name': 'Bob Smith', 'avatar': '👨'},
-    {'id': 'user-3', 'name': 'Carol White', 'avatar': '👩'},
-    {'id': 'user-4', 'name': 'David Brown', 'avatar': '👨'},
-    {'id': 'user-5', 'name': 'Eve Davis', 'avatar': '👩'},
-  ];
+  List<UserSearchResult> _searchResults = [];
+  bool _isSearching = false;
+  String? _searchError;
 
   @override
   void initState() {
     super.initState();
-    _filteredUsers = _allUsers;
-    _searchController.addListener(_filterUsers);
+    _searchController.addListener(_performSearch);
   }
 
-  void _filterUsers() {
-    final query = _searchController.text.toLowerCase();
+  void _performSearch() async {
+    final query = _searchController.text.trim();
+    
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _searchError = null;
+      });
+      return;
+    }
+
     setState(() {
-      if (query.isEmpty) {
-        _filteredUsers = _allUsers;
-      } else {
-        _filteredUsers = _allUsers
-            .where((user) =>
-                user['name']!.toLowerCase().contains(query) ||
-                user['id']!.toLowerCase().contains(query))
-            .toList();
-      }
+      _isSearching = true;
+      _searchError = null;
     });
+
+    try {
+      // Get search service with token
+      final searchService = await ref.read(searchServiceWithTokenProvider.future);
+      final results = await searchService.searchByUsername(query);
+      
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _searchError = e.toString();
+          _isSearching = false;
+          _searchResults = [];
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendInviteToUser(UserSearchResult user) async {
+    try {
+      await ref.read(sendInviteMutationProvider.notifier).sendInvite(user.userId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invitation sent to ${user.username}!'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Don't close, allow further invites
+      }
+    } catch (e) {
+      if (mounted) {
+        final errorMessage = InviteErrorHandler.getUserFriendlyMessage(e);
+        InviteErrorHandler.logError('Send Invite', e);
+        
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Send Invitation Failed'),
+              content: Text(errorMessage),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
   }
 
   @override
@@ -71,119 +125,96 @@ class _SendInvitePickerScreenState extends ConsumerState<SendInvitePickerScreen>
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search users...',
-                prefixIcon: const Icon(Icons.search),
+                hintText: 'Search users by username...',
+                prefixIcon: _isSearching
+                    ? Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchResults = [];
+                            _searchError = null;
+                          });
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),
           ),
-          // User list
-          Expanded(
-            child: _filteredUsers.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.person_outline,
-                            size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text(_searchController.text.isEmpty
-                            ? 'No users found'
-                            : 'No users match "${_searchController.text}"'),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _filteredUsers.length,
-                    itemBuilder: (context, index) {
-                      final user = _filteredUsers[index];
-                      final isSelected = _selectedUserId == user['id'];
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          child: Text(user['avatar']!),
-                        ),
-                        title: Text(user['name']!),
-                        subtitle: Text(user['id']!),
-                        trailing: isSelected
-                            ? const Icon(Icons.check, color: Colors.green)
-                            : null,
-                        selected: isSelected,
-                        onTap: () {
-                          setState(() {
-                            _selectedUserId = isSelected ? null : user['id'];
-                          });
-                        },
-                      );
-                    },
-                  ),
-          ),
-          // Send button
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed:
-                    _selectedUserId == null || sendMutation.isLoading
-                        ? null
-                        : () async {
-                            try {
-                              await ref
-                                  .read(sendInviteMutationProvider.notifier)
-                                  .sendInvite(_selectedUserId!);
-
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content:
-                                        Text('Invitation sent successfully!'),
-                                    duration: Duration(seconds: 2),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                                Navigator.pop(context);
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                final errorMessage = InviteErrorHandler.getUserFriendlyMessage(e);
-                                InviteErrorHandler.logError('Send Invite', e);
-                                
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      title: const Text('Send Invitation Failed'),
-                                      content: Text(errorMessage),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.of(context).pop();
-                                          },
-                                          child: const Text('OK'),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-                              }
-                            }
-                          },
-                child: sendMutation.isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Text('Send Invitation'),
+          // Error message
+          if (_searchError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  _searchError!,
+                  style: TextStyle(color: Colors.red.shade700),
+                ),
               ),
             ),
+          // User list
+          Expanded(
+            child: _isSearching
+                ? const Center(child: CircularProgressIndicator())
+                : _searchResults.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.person_outline,
+                                size: 64, color: Colors.grey),
+                            const SizedBox(height: 16),
+                            Text(_searchController.text.isEmpty
+                                ? 'Search for users to invite'
+                                : 'No users found matching "${_searchController.text}"'),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final user = _searchResults[index];
+                          final isSending = sendMutation.isLoading;
+
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundImage: user.profilePictureUrl != null
+                                  ? NetworkImage(user.profilePictureUrl!)
+                                  : null,
+                              child: user.profilePictureUrl == null
+                                  ? Text(user.username.substring(0, 1).toUpperCase())
+                                  : null,
+                            ),
+                            title: Text(user.username),
+                            subtitle: Text(user.email),
+                            trailing: ElevatedButton.icon(
+                              onPressed: isSending ? null : () => _sendInviteToUser(user),
+                              icon: Icon(isSending ? Icons.hourglass_empty : Icons.send),
+                              label: const Text('Invite'),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

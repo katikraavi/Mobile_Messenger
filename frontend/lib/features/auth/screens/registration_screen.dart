@@ -181,6 +181,95 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Test accounts section - AT TOP FOR VISIBILITY
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        border: Border.all(color: Colors.amber.shade200),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '🧪 Quick Test Accounts',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.person, size: 18),
+                                  label: const Text('Alice'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    side: BorderSide(color: Colors.amber.shade400),
+                                  ),
+                                  onPressed: () {
+                                    _fillTestAccount('alice@example.com', 'alice', 'Alice Johnson');
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.person, size: 18),
+                                  label: const Text('Bob'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    side: BorderSide(color: Colors.amber.shade400),
+                                  ),
+                                  onPressed: () {
+                                    _fillTestAccount('bob@example.com', 'bob', 'Bob Smith');
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.person, size: 18),
+                                  label: const Text('Charlie'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    side: BorderSide(color: Colors.amber.shade400),
+                                  ),
+                                  onPressed: () {
+                                    _fillTestAccount('charlie@example.com', 'charlie', 'Charlie Brown');
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.person, size: 18),
+                                  label: const Text('Diane'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    side: BorderSide(color: Colors.amber.shade400),
+                                  ),
+                                  onPressed: () {
+                                    _fillTestAccount('diane@example.com', 'diane', 'Diane Miller');
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+
                     // Email field
                     TextFormField(
                       controller: _emailController,
@@ -401,61 +490,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ),
 
                     const SizedBox(height: 24),
-
-                    // Test accounts section
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade50,
-                        border: Border.all(color: Colors.amber.shade200),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '🧪 Quick Test Accounts',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.orange,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  icon: const Icon(Icons.person, size: 18),
-                                  label: const Text('Person 1'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    side: BorderSide(color: Colors.amber.shade400),
-                                  ),
-                                  onPressed: () {
-                                    _fillTestAccount('test1@example.com', 'test1_user', 'Test Person 1');
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  icon: const Icon(Icons.person, size: 18),
-                                  label: const Text('Person 2'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    side: BorderSide(color: Colors.amber.shade400),
-                                  ),
-                                  onPressed: () {
-                                    _fillTestAccount('test2@example.com', 'test2_user', 'Test Person 2');
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 );
               },

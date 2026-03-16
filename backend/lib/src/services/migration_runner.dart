@@ -215,14 +215,14 @@ class MigrationRunner {
         version: 10,
         description: 'Add verified_at column to users table',
         upSql: '''
-          ALTER TABLE users ADD COLUMN verified_at TIMESTAMP WITH TIME ZONE;
-          CREATE INDEX idx_users_email_verified ON users(email_verified);
-          CREATE INDEX idx_users_verified_at ON users(verified_at DESC);
+          -- verified_at column already added in migration 2
+          -- Just ensure indexes exist
+          CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified);
+          CREATE INDEX IF NOT EXISTS idx_users_verified_at ON users(verified_at DESC);
         ''',
         downSql: '''
           DROP INDEX IF EXISTS idx_users_verified_at;
           DROP INDEX IF EXISTS idx_users_email_verified;
-          ALTER TABLE users DROP COLUMN verified_at;
         ''',
       ),
       Migration(
@@ -301,6 +301,215 @@ class MigrationRunner {
           DROP INDEX IF EXISTS idx_user_is_verified;
           DROP INDEX IF EXISTS idx_user_email_lower;
           DROP INDEX IF EXISTS idx_user_username_lower;
+        ''',
+      ),
+      Migration(
+        version: 14,
+        description: '019-chat-list: Recreate chats and messages tables with proper schema',
+        upSql: '''
+          -- Drop existing chat_members table if it exists
+          DROP TABLE IF EXISTS chat_members CASCADE;
+          
+          -- Drop existing chats and messages tables
+          DROP TABLE IF EXISTS messages CASCADE;
+          DROP TABLE IF EXISTS chats CASCADE;
+          
+          -- Create chats table with participant-based design and per-user archive support
+          CREATE TABLE chats (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            participant_1_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            participant_2_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            is_participant_1_archived BOOLEAN NOT NULL DEFAULT FALSE,
+            is_participant_2_archived BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            
+            -- Constraint: enforce 1:1 relationships (no duplicates)
+            UNIQUE(participant_1_id, participant_2_id),
+            
+            -- Constraint: prevent self-chat
+            CHECK(participant_1_id <> participant_2_id)
+          );
+          
+          -- Index for efficient list query (find all active chats for user sorted by recency)
+          CREATE INDEX idx_chats_participant_1_active 
+          ON chats(participant_1_id, updated_at DESC) 
+          WHERE is_participant_1_archived = FALSE;
+          
+          -- Separate index for participant 2
+          CREATE INDEX idx_chats_participant_2_active 
+          ON chats(participant_2_id, updated_at DESC) 
+          WHERE is_participant_2_archived = FALSE;
+          
+          -- Create messages table with encrypted content (end-to-end encrypted)
+          CREATE TABLE messages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+            sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            
+            -- Base64-encoded ChaCha20-Poly1305 encrypted message content
+            -- Never store plaintext in database
+            encrypted_content TEXT NOT NULL,
+            
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+          
+          -- Index for efficient message history fetch (chat + timestamp for pagination)
+          CREATE INDEX idx_messages_chat_created 
+          ON messages(chat_id, created_at DESC);
+          
+          -- Index for user's sent messages (for filtering/analytics)
+          CREATE INDEX idx_messages_sender 
+          ON messages(sender_id, created_at DESC);
+        ''',
+        downSql: '''
+          DROP TABLE IF EXISTS messages CASCADE;
+          DROP TABLE IF EXISTS chats CASCADE;
+        ''',
+      ),
+      Migration(
+        version: 15,
+        description: '020-messaging: Update messages table with status tracking and soft-delete',
+        upSql: '''
+          -- Add missing columns to messages table for full messaging support
+          ALTER TABLE messages
+          ADD COLUMN IF NOT EXISTS recipient_id UUID,
+          ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'sent',
+          ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+          
+          -- Add foreign key constraint for recipient (nullable for backwards compatibility)
+          ALTER TABLE messages
+          ADD CONSTRAINT fk_messages_recipient FOREIGN KEY (recipient_id) 
+            REFERENCES users(id) ON DELETE CASCADE;
+          
+          -- Add index for recipient status queries (find unread messages for a user)
+          CREATE INDEX IF NOT EXISTS idx_messages_recipient_status 
+          ON messages(recipient_id, status, created_at DESC) WHERE recipient_id IS NOT NULL;
+          
+          -- Add index for efficient soft-delete filtering
+          CREATE INDEX IF NOT EXISTS idx_messages_is_deleted 
+          ON messages(is_deleted);
+          
+          -- Add constraint to ensure edited_at is after created_at
+          ALTER TABLE messages
+          ADD CONSTRAINT check_edited_after_created 
+            CHECK (edited_at IS NULL OR edited_at >= created_at);
+          
+          -- Add constraint to ensure deleted_at is after created_at
+          ALTER TABLE messages
+          ADD CONSTRAINT check_deleted_after_created 
+            CHECK (deleted_at IS NULL OR deleted_at >= created_at);
+        ''',
+        downSql: '''
+          -- Remove new columns and constraints from messages table
+          ALTER TABLE messages
+          DROP CONSTRAINT IF EXISTS check_deleted_after_created,
+          DROP CONSTRAINT IF EXISTS check_edited_after_created,
+          DROP CONSTRAINT IF EXISTS fk_messages_recipient,
+          DROP COLUMN IF EXISTS recipient_id,
+          DROP COLUMN IF EXISTS status,
+          DROP COLUMN IF EXISTS edited_at,
+          DROP COLUMN IF EXISTS deleted_at,
+          DROP COLUMN IF EXISTS is_deleted;
+          
+          DROP INDEX IF EXISTS idx_messages_is_deleted;
+          DROP INDEX IF EXISTS idx_messages_recipient_status;
+        ''',
+      ),
+      Migration(
+        version: 16,
+        description: '020-messaging: Create message_delivery_status table for per-recipient delivery tracking',
+        upSql: '''
+          -- Create message_delivery_status table to track delivery/read status per recipient
+          -- Named message_delivery_status to avoid conflict with message_status ENUM type from migration 1
+          CREATE TABLE IF NOT EXISTS message_delivery_status (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            status VARCHAR(20) NOT NULL DEFAULT 'sent',
+            delivered_at TIMESTAMP,
+            read_at TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            
+            -- Unique constraint: one status record per message-recipient pair
+            UNIQUE (message_id, recipient_id)
+          );
+          
+          -- Index for finding unread messages for a user
+          CREATE INDEX IF NOT EXISTS idx_message_delivery_status_recipient_unread 
+          ON message_delivery_status(recipient_id, status, updated_at DESC) 
+          WHERE status != 'read';
+          
+          -- Index for message status lookup by message
+          CREATE INDEX IF NOT EXISTS idx_message_delivery_status_message 
+          ON message_delivery_status(message_id);
+          
+          -- Index for recipient queries
+          CREATE INDEX IF NOT EXISTS idx_message_delivery_status_recipient 
+          ON message_delivery_status(recipient_id, updated_at DESC);
+        ''',
+        downSql: '''
+          DROP TABLE IF EXISTS message_delivery_status CASCADE;
+        ''',
+      ),
+      Migration(
+        version: 17,
+        description: '020-messaging: Create message_edits table for audit trail and edit history',
+        upSql: '''
+          -- Create message_edits table to maintain immutable audit trail of message edits
+          CREATE TABLE IF NOT EXISTS message_edits (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            edit_number INTEGER NOT NULL CHECK (edit_number >= 1),
+            previous_content TEXT NOT NULL,  -- Encrypted, just like messages.encrypted_content
+            edited_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            edited_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            
+            -- Constraint: unique per message and edit number (no duplicates)
+            UNIQUE (message_id, edit_number)
+          );
+          
+          -- Index for retrieving edit history for a message
+          CREATE INDEX IF NOT EXISTS idx_message_edits_message 
+          ON message_edits(message_id, edit_number DESC);
+          
+          -- Index for user's edits
+          CREATE INDEX IF NOT EXISTS idx_message_edits_edited_by 
+          ON message_edits(edited_by, edited_at DESC);
+        ''',
+        downSql: '''
+          DROP TABLE IF EXISTS message_edits CASCADE;
+        ''',
+      ),
+      Migration(
+        version: 18,
+        description: '010-media-messaging: Create media_storage table for uploaded files',
+        upSql: '''
+          CREATE TABLE IF NOT EXISTS media_storage (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            uploader_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            file_name VARCHAR(255) NOT NULL,
+            mime_type VARCHAR(100),
+            file_size_bytes INTEGER NOT NULL,
+            file_path TEXT NOT NULL,
+            original_name TEXT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            
+            CONSTRAINT fk_media_uploader FOREIGN KEY (uploader_id) 
+              REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT valid_file_size CHECK (file_size_bytes > 0 AND file_size_bytes <= 20971520)
+          );
+          
+          CREATE INDEX IF NOT EXISTS idx_media_uploader_created 
+          ON media_storage(uploader_id, created_at DESC);
+          
+          CREATE INDEX IF NOT EXISTS idx_media_created_at 
+          ON media_storage(created_at DESC);
+        ''',
+        downSql: '''
+          DROP TABLE IF EXISTS media_storage CASCADE;
         ''',
       ),
     ]);

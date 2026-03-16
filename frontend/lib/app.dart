@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
 import 'package:frontend/core/services/api_client.dart';
 import 'package:frontend/core/push_notifications/push_notification_handler.dart';
 import 'package:frontend/features/auth/models/auth_models.dart';
@@ -8,6 +9,9 @@ import 'package:frontend/features/auth/screens/auth_flow_screen.dart';
 import 'package:frontend/features/search/screens/search_screen.dart';
 import 'package:frontend/features/profile/screens/profile_view_screen.dart';
 import 'package:frontend/features/invitations/screens/invitations_screen.dart';
+import 'package:frontend/features/invitations/providers/invites_provider.dart';
+import 'package:frontend/features/chats/screens/chat_list_screen.dart';
+import 'package:frontend/features/chats/providers/chat_cache_invalidator.dart';
 
 /// Root widget for Mobile Messenger application
 /// 
@@ -175,14 +179,14 @@ class _ConnectionErrorScreen extends StatelessWidget {
 }
 
 /// Home screen placeholder
-class _HomeScreen extends StatefulWidget {
+class _HomeScreen extends riverpod.ConsumerStatefulWidget {
   const _HomeScreen();
 
   @override
-  State<_HomeScreen> createState() => _HomeScreenState();
+  riverpod.ConsumerState<_HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<_HomeScreen> {
+class _HomeScreenState extends riverpod.ConsumerState<_HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
@@ -194,7 +198,12 @@ class _HomeScreenState extends State<_HomeScreen> {
           return AuthFlowScreen(
             onAuthSuccess: () {
               print('[Auth] User logged in: ${authProvider.user?.username}');
-              // Consumer will rebuild automatically via notifyListeners()
+              // Invalidate invite cache because a new user just logged in
+              print('[Auth] Invalidating invite cache for new user');
+              ref.read(invitesCacheInvalidatorProvider.notifier).state++;
+              // Invalidate chat cache on login (T025)
+              print('[Auth] Invalidating chat cache for new user');
+              ref.read(chatsCacheInvalidatorProvider.notifier).state++;
             },
           );
         }
@@ -202,7 +211,7 @@ class _HomeScreenState extends State<_HomeScreen> {
         // Show main app if authenticated
         return _AuthenticatedHomeScreen(
           user: authProvider.user!,
-          onLogout: () => authProvider.logout(),
+          authProvider: authProvider,
         );
       },
     );
@@ -210,36 +219,50 @@ class _HomeScreenState extends State<_HomeScreen> {
 }
 
 /// Authenticated home screen with bottom navigation
-class _AuthenticatedHomeScreen extends StatefulWidget {
+class _AuthenticatedHomeScreen extends riverpod.ConsumerStatefulWidget {
   final User user;
-  final VoidCallback? onLogout;
+  final AuthProvider authProvider;
 
   const _AuthenticatedHomeScreen({
     required this.user,
-    this.onLogout,
+    required this.authProvider,
   });
 
   @override
-  State<_AuthenticatedHomeScreen> createState() => _AuthenticatedHomeScreenState();
+  riverpod.ConsumerState<_AuthenticatedHomeScreen> createState() => _AuthenticatedHomeScreenState();
 }
 
-class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
+class _AuthenticatedHomeScreenState extends riverpod.ConsumerState<_AuthenticatedHomeScreen> {
   int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
+    // Watch pending invites to show count badge
+    final pendingInvites = ref.watch(pendingInvitesProvider);
+    final pendingCount = pendingInvites.maybeWhen(
+      data: (invites) => invites.length,
+      orElse: () => 0,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: _selectedIndex == 0 
           ? const Text('Search Users')
           : _selectedIndex == 1
+          ? const Text('Chats')
+          : _selectedIndex == 2
           ? const Text('Invitations')
           : const Text('My Profile'),
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: widget.onLogout,
+            onPressed: () async {
+              // Clear auth state first, then invalidate invite cache
+              await widget.authProvider.logout();
+              // After logout completes, increment cache invalidator to clear any remaining data
+              ref.read(invitesCacheInvalidatorProvider.notifier).state++;
+            },
           ),
         ],
       ),
@@ -248,6 +271,9 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
         children: [
           // Search Tab
           _SearchTab(user: widget.user),
+          
+          // Chat List Tab (T024)
+          const ChatListScreen(),
           
           // Invitations Tab
           const InvitationsScreen(),
@@ -262,16 +288,24 @@ class _AuthenticatedHomeScreenState extends State<_AuthenticatedHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         type: BottomNavigationBarType.fixed,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
+        items: <BottomNavigationBarItem>[
+          const BottomNavigationBarItem(
             icon: Icon(Icons.search),
             label: 'Search',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.mail),
-            label: 'Invitations',
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.chat),
+            label: 'Chats',
           ),
           BottomNavigationBarItem(
+            icon: Badge(
+              isLabelVisible: pendingCount > 0,
+              label: Text(pendingCount.toString()),
+              child: const Icon(Icons.mail),
+            ),
+            label: 'Invitations',
+          ),
+          const BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: 'Profile',
           ),
@@ -393,7 +427,7 @@ class _SearchTab extends StatelessWidget {
                         Icon(Icons.info, color: Colors.amber.shade700),
                         const SizedBox(width: 8),
                         Text(
-                          'Test Users Available',
+                          'Ready to Chat!',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.amber.shade700,
@@ -402,17 +436,11 @@ class _SearchTab extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _TestUserTile('alice', 'alice@example.com'),
-                    _TestUserTile('bob', 'bob@example.com'),
-                    _TestUserTile('charlie', 'charlie@example.com'),
-                    _TestUserTile('diane', 'diane@test.org'),
-                    const SizedBox(height: 8),
                     Text(
-                      '...and more! Try searching by username or email.',
+                      'Use the search feature to find other users and send them invitations to chat!',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.amber.shade600,
-                        fontStyle: FontStyle.italic,
+                        fontSize: 13,
+                        color: Colors.amber.shade700,
                       ),
                     ),
                   ],
@@ -421,48 +449,6 @@ class _SearchTab extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Test user tile widget
-class _TestUserTile extends StatelessWidget {
-  final String username;
-  final String email;
-
-  const _TestUserTile(this.username, this.email);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(Icons.person, size: 16, color: Colors.amber.shade700),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  username,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  email,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
