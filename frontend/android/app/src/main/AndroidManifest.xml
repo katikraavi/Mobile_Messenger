@@ -10,6 +10,11 @@
         android:maxSdkVersion="32" />
     <!-- READ_MEDIA_IMAGES is required for Android 13+ -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+        <!-- Microphone permission for audio messages -->
+        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+        <!-- READ_MEDIA_AUDIO is required for Android 13+ to read audio files -->
+        <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     
     <!-- Declare optional camera feature (device can run without camera) -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />

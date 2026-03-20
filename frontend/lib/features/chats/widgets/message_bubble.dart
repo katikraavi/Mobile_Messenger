@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import '../models/message_model.dart';
 import './message_status_indicator.dart';
 import './user_avatar_widget.dart';
@@ -31,7 +33,7 @@ class MessageBubble extends StatelessWidget {
   final bool isFirstFromSender;
 
   const MessageBubble({
-    Key? key,
+    super.key,
     required this.message,
     required this.currentUserId,
     this.onLongPress,
@@ -40,13 +42,17 @@ class MessageBubble extends StatelessWidget {
     this.onDelete,
     this.isLastFromSender = true,
     this.isFirstFromSender = true,
-  }) : super(key: key);
+  });
 
   /// Check if message is sent by current user
   bool get isSentByUser => message.senderId == currentUserId;
 
   /// Get display content (decrypted if available)
   String get displayContent => message.getDisplayContent();
+
+  String get failureLabel => message.hasError
+      ? 'Not sent'
+      : 'Failed to send';
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +111,7 @@ class MessageBubble extends StatelessWidget {
                         boxShadow: message.isSending
                             ? [
                                 BoxShadow(
-                                  color: Colors.blue.withOpacity(0.3),
+                                  color: Colors.blue.withValues(alpha: 0.3),
                                   blurRadius: 4,
                                   spreadRadius: 1,
                                 )
@@ -196,17 +202,19 @@ class MessageBubble extends StatelessWidget {
                   if (message.hasError && isSentByUser)
                     Padding(
                       padding: const EdgeInsets.only(top: 6, right: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Icon(
                             Icons.error_outline,
                             color: Colors.red.shade600,
                             size: 14,
                           ),
-                          const SizedBox(width: 4),
                           Text(
-                            message.error ?? 'Failed to send',
+                            failureLabel,
                             style: TextStyle(
                               color: Colors.red.shade600,
                               fontSize: 12,
@@ -214,11 +222,10 @@ class MessageBubble extends StatelessWidget {
                             ),
                           ),
                           if (onRetry != null) ...[
-                            const SizedBox(width: 8),
                             GestureDetector(
                               onTap: onRetry,
                               child: Text(
-                                'Retry',
+                                'Send again',
                                 style: TextStyle(
                                   color: Colors.blue.shade600,
                                   fontSize: 12,
@@ -278,6 +285,8 @@ class MessageBubble extends StatelessWidget {
     if (mediaUrl == null) {
       return SizedBox.shrink();
     }
+
+    final resolvedMediaUrl = _resolveMediaUrl(mediaUrl);
     
     if (mimeType.startsWith('image/')) {
       // Image media
@@ -290,7 +299,7 @@ class MessageBubble extends StatelessWidget {
           ),
           color: Colors.grey.shade200,
           child: Image.network(
-            mediaUrl,
+            resolvedMediaUrl,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) => Container(
               color: Colors.grey.shade300,
@@ -300,50 +309,9 @@ class MessageBubble extends StatelessWidget {
         ),
       );
     } else if (mimeType.startsWith('video/')) {
-      // Video media - show thumbnail with play button
-      return GestureDetector(
-        onTap: () {
-          // TODO: Open video player
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Video playback coming soon')),
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            constraints: BoxConstraints(
-              maxWidth: 250,
-              maxHeight: 300,
-            ),
-            color: Colors.grey.shade300,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Placeholder thumbnail
-                Icon(
-                  Icons.videocam,
-                  size: 60,
-                  color: Colors.grey.shade600,
-                ),
-                // Play button overlay
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.black.withOpacity(0.5),
-                  ),
-                  child: Icon(
-                    Icons.play_arrow,
-                    size: 32,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _InlineVideoPlayer(url: resolvedMediaUrl);
+    } else if (mimeType.startsWith('audio/')) {
+      return _InlineAudioPlayer(url: resolvedMediaUrl);
     } else {
       // Unknown media type
       return Container(
@@ -355,6 +323,23 @@ class MessageBubble extends StatelessWidget {
         child: Icon(Icons.attachment, color: Colors.grey.shade600),
       );
     }
+  }
+
+  String _resolveMediaUrl(String mediaUrl) {
+    if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+      return mediaUrl;
+    }
+
+    const baseUrl = String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:8081',
+    );
+
+    if (mediaUrl.startsWith('/')) {
+      return '$baseUrl$mediaUrl';
+    }
+
+    return '$baseUrl/$mediaUrl';
   }
 
   /// Build profile picture widget for received messages
@@ -377,5 +362,364 @@ class MessageBubble extends StatelessWidget {
     // This would typically use showMenu or a custom popup
     // For now, this is a placeholder - actual implementation would
     // be in the parent widget's onLongPress handler
+  }
+}
+
+class _InlineAudioPlayer extends StatefulWidget {
+  final String url;
+
+  const _InlineAudioPlayer({required this.url});
+
+  @override
+  State<_InlineAudioPlayer> createState() => _InlineAudioPlayerState();
+}
+
+class _InlineAudioPlayerState extends State<_InlineAudioPlayer> {
+  late final Player _player;
+  bool _initialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = Player();
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _player.open(Media(widget.url));
+      await _player.pause();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _initialized = true;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _hasError = true;
+      });
+    }
+  }
+
+  Future<void> _togglePlayback(bool isPlaying) async {
+    if (isPlaying) {
+      await _player.pause();
+      return;
+    }
+
+    await _player.play();
+  }
+
+  Future<void> _seekTo(double value, Duration duration) async {
+    final milliseconds = (duration.inMilliseconds * value).round();
+    await _player.seek(Duration(milliseconds: milliseconds));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.error_outline),
+      );
+    }
+
+    if (!_initialized) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return Container(
+      width: 250,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: StreamBuilder<bool>(
+        stream: _player.stream.playing,
+        initialData: _player.state.playing,
+        builder: (context, playingSnapshot) {
+          final isPlaying = playingSnapshot.data ?? false;
+          return StreamBuilder<Duration>(
+            stream: _player.stream.position,
+            initialData: _player.state.position,
+            builder: (context, positionSnapshot) {
+              final position = positionSnapshot.data ?? Duration.zero;
+              return StreamBuilder<Duration>(
+                stream: _player.stream.duration,
+                initialData: _player.state.duration,
+                builder: (context, durationSnapshot) {
+                  final duration = durationSnapshot.data ?? Duration.zero;
+                  final progress = duration.inMilliseconds <= 0
+                      ? 0.0
+                      : (position.inMilliseconds / duration.inMilliseconds)
+                          .clamp(0.0, 1.0);
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => _togglePlayback(isPlaying),
+                            icon: Icon(
+                              isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Audio message',
+                              style: TextStyle(
+                                color: Colors.grey.shade900,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        value: progress,
+                        onChanged: duration.inMilliseconds <= 0
+                            ? null
+                            : (value) => _seekTo(value, duration),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _InlineVideoPlayer extends StatefulWidget {
+  final String url;
+
+  const _InlineVideoPlayer({required this.url});
+
+  @override
+  State<_InlineVideoPlayer> createState() => _InlineVideoPlayerState();
+}
+
+class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+  late final Player _player;
+  late final VideoController _controller;
+  bool _showControls = true;
+  bool _isMuted = false;
+  bool _initialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = Player();
+    _controller = VideoController(_player);
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _player.open(Media(widget.url));
+      await _player.setPlaylistMode(PlaylistMode.none);
+      await _player.setVolume(100);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _initialized = true;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _hasError = true;
+      });
+    }
+  }
+
+  Future<void> _togglePlayback() async {
+    if (_player.state.playing) {
+      await _player.pause();
+      setState(() {
+        _showControls = true;
+      });
+      return;
+    }
+
+    await _player.play();
+    setState(() {
+      _showControls = false;
+    });
+  }
+
+  Future<void> _toggleMute() async {
+    _isMuted = !_isMuted;
+    await _player.setVolume(_isMuted ? 0 : 100);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _seekTo(double value, Duration duration) async {
+    final milliseconds = (duration.inMilliseconds * value).round();
+    await _player.seek(Duration(milliseconds: milliseconds));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(
+          maxWidth: 250,
+          maxHeight: 300,
+        ),
+        color: Colors.black,
+        child: Builder(
+          builder: (context) {
+            if (_hasError) {
+              return const AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Center(child: Icon(Icons.error_outline, color: Colors.redAccent, size: 40)),
+              );
+            }
+
+            if (!_initialized) {
+              return AspectRatio(
+                aspectRatio: 16 / 9,
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            return StreamBuilder<bool>(
+              stream: _player.stream.playing,
+              initialData: _player.state.playing,
+              builder: (context, playingSnapshot) {
+                final isPlaying = playingSnapshot.data ?? false;
+                return StreamBuilder<Duration>(
+                  stream: _player.stream.position,
+                  initialData: _player.state.position,
+                  builder: (context, positionSnapshot) {
+                    final position = positionSnapshot.data ?? Duration.zero;
+                    return StreamBuilder<Duration>(
+                      stream: _player.stream.duration,
+                      initialData: _player.state.duration,
+                      builder: (context, durationSnapshot) {
+                        final duration = durationSnapshot.data ?? Duration.zero;
+                        final progress = duration.inMilliseconds <= 0
+                            ? 0.0
+                            : (position.inMilliseconds / duration.inMilliseconds)
+                                .clamp(0.0, 1.0);
+
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showControls = !_showControls;
+                            });
+                          },
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              const AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: SizedBox.expand(),
+                              ),
+                              Positioned.fill(
+                                child: Video(controller: _controller),
+                              ),
+                              if (_showControls || !isPlaying)
+                                Container(
+                                  color: Colors.black.withValues(alpha: 0.28),
+                                ),
+                              if (_showControls || !isPlaying)
+                                IconButton(
+                                  onPressed: _togglePlayback,
+                                  iconSize: 48,
+                                  color: Colors.white,
+                                  icon: Icon(
+                                    isPlaying
+                                        ? Icons.pause_circle_filled
+                                        : Icons.play_circle_fill,
+                                  ),
+                                ),
+                              Positioned(
+                                right: 8,
+                                top: 8,
+                                child: IconButton(
+                                  onPressed: _toggleMute,
+                                  color: Colors.white,
+                                  icon: Icon(
+                                    _isMuted ? Icons.volume_off : Icons.volume_up,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                left: 8,
+                                right: 8,
+                                bottom: 8,
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 3,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                  ),
+                                  child: Slider(
+                                    value: progress,
+                                    onChanged: duration.inMilliseconds <= 0
+                                        ? null
+                                        : (value) => _seekTo(value, duration),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
   }
 }

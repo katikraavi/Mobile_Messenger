@@ -4,6 +4,7 @@ import '../../../utils/copyable_error_widget.dart';
 import '../services/search_service.dart';
 import '../../invitations/providers/invites_provider.dart';
 import '../../invitations/services/invite_error_handler.dart';
+import '../../chats/widgets/user_avatar_widget.dart';
 
 /// Callback when a result is tapped
 typedef OnResultTap = Function(UserSearchResult result);
@@ -115,28 +116,10 @@ class _SearchResultTile extends StatelessWidget {
           child: Row(
             children: [
               // Profile picture
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey[300],
-                  image: result.profilePictureUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(result.profilePictureUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: result.profilePictureUrl == null
-                    ? Center(
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.grey[600],
-                          size: 28,
-                        ),
-                      )
-                    : null,
+              UserAvatarWidget(
+                imageUrl: result.profilePictureUrl,
+                radius: 28,
+                username: result.username,
               ),
               const SizedBox(width: 12),
               // User info
@@ -279,28 +262,10 @@ class _SendInvitationDialogState extends ConsumerState<_SendInvitationDialog> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey[300],
-                  image: widget.result.profilePictureUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(widget.result.profilePictureUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: widget.result.profilePictureUrl == null
-                    ? Center(
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.grey[600],
-                          size: 20,
-                        ),
-                      )
-                    : null,
+              UserAvatarWidget(
+                imageUrl: widget.result.profilePictureUrl,
+                radius: 20,
+                username: widget.result.username,
               ),
               const SizedBox(width: 12),
               Expanded(

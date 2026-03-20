@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:frontend/core/services/app_exception_logger.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Event types for WebSocket messages
@@ -145,8 +146,12 @@ class MessageWebSocketService {
 
       // Start heartbeat
       _startHeartbeat();
-    } catch (e) {
-      print('[MessageWebSocket] ❌ Failed to connect: $e');
+    } catch (e, st) {
+      AppExceptionLogger.log(
+        e,
+        stackTrace: st,
+        context: 'MessageWebSocketService.connect',
+      );
       _isConnected = false;
       rethrow;
     }
@@ -239,8 +244,12 @@ class MessageWebSocketService {
       _currentChatId = null;
 
       print('[MessageWebSocket] 🔌 Disconnected');
-    } catch (e) {
-      print('[MessageWebSocket] ❌ Error disconnecting: $e');
+    } catch (e, st) {
+      AppExceptionLogger.log(
+        e,
+        stackTrace: st,
+        context: 'MessageWebSocketService.disconnect',
+      );
     }
   }
 
@@ -295,8 +304,11 @@ class MessageWebSocketService {
         print('[MessageWebSocket] ⚠️  Received non-string message: $message');
       }
     } catch (e, st) {
-      print('[MessageWebSocket] ❌ Error handling message: $e');
-      print('[MessageWebSocket] Stack trace: $st');
+      AppExceptionLogger.log(
+        e,
+        stackTrace: st,
+        context: 'MessageWebSocketService._handleMessage',
+      );
     }
   }
 
@@ -306,8 +318,12 @@ class MessageWebSocketService {
       if (_isConnected && _webSocket != null) {
         try {
           _webSocket!.sink.add(jsonEncode({'type': 'ping'}));
-        } catch (e) {
-          print('[MessageWebSocket] ❌ Heartbeat failed: $e');
+        } catch (e, st) {
+          AppExceptionLogger.log(
+            e,
+            stackTrace: st,
+            context: 'MessageWebSocketService._startHeartbeat',
+          );
         }
       }
     });

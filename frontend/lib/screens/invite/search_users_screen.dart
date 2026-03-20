@@ -153,13 +153,10 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                 itemBuilder: (context, index) {
                   final user = _searchResults[index];
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: user.profilePictureUrl != null
-                          ? NetworkImage(user.profilePictureUrl!)
-                          : null,
-                      child: user.profilePictureUrl == null
-                          ? const Icon(Icons.person)
-                          : null,
+                    leading: UserAvatarWidget(
+                      imageUrl: user.profilePictureUrl,
+                      radius: 20,
+                      username: user.username,
                     ),
                     title: Text(user.username),
                     subtitle: Text(user.email),

@@ -15,7 +15,7 @@ Future<void> up(Connection connection) async {
       
       CONSTRAINT fk_media_uploader FOREIGN KEY (uploader_id) 
         REFERENCES "user"(id) ON DELETE CASCADE,
-      CONSTRAINT valid_file_size CHECK (file_size_bytes > 0 AND file_size_bytes <= 20971520)
+      CONSTRAINT valid_file_size CHECK (file_size_bytes > 0 AND file_size_bytes <= 52428800)
     );
   ''');
   

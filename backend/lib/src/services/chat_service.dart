@@ -123,6 +123,8 @@ class ChatService {
                m.edited_at,
                m.deleted_at,
                m.is_deleted,
+           m.media_url,
+           m.media_type,
                u.username as sender_username,
                u.profile_picture_url as sender_avatar
         FROM $_messagesTable m
@@ -151,8 +153,8 @@ class ChatService {
       return result.map((row) {
         final message = _rowToMessage(row);
         // Add sender username and avatar to response
-        message.senderUsername = row[10] as String?;
-        message.senderAvatarUrl = row[11] as String?;
+        message.senderUsername = row[12] as String?;
+        message.senderAvatarUrl = row[13] as String?;
         return message;
       }).toList();
     } catch (e) {
@@ -308,6 +310,58 @@ class ChatService {
         'Failed to set archive status for user $userId in chat $chatId: $e',
       );
     }
+  }
+
+  /// Get whether notifications are muted for this chat and user.
+  Future<bool> isChatMuted(String chatId, String userId) async {
+    final result = await connection.query(
+      '''
+      SELECT is_muted
+      FROM chat_notification_preferences
+      WHERE chat_id = @chatId::UUID AND user_id = @userId::UUID
+      ''',
+      substitutionValues: {'chatId': chatId, 'userId': userId},
+    );
+
+    if (result.isEmpty) {
+      return false;
+    }
+
+    return result.first[0] as bool? ?? false;
+  }
+
+  /// Upsert the notification preference for a user in a chat.
+  Future<bool> setChatMuted(String chatId, String userId, bool isMuted) async {
+    await connection.execute(
+      '''
+      INSERT INTO chat_notification_preferences (chat_id, user_id, is_muted, updated_at)
+      VALUES (@chatId::UUID, @userId::UUID, @isMuted, NOW())
+      ON CONFLICT (chat_id, user_id)
+      DO UPDATE SET is_muted = EXCLUDED.is_muted, updated_at = NOW()
+      ''',
+      substitutionValues: {
+        'chatId': chatId,
+        'userId': userId,
+        'isMuted': isMuted,
+      },
+    );
+
+    return isMuted;
+  }
+
+  /// Fetch all chat ids muted by the current user.
+  Future<List<String>> getMutedChatIds(String userId) async {
+    final result = await connection.query(
+      '''
+      SELECT chat_id
+      FROM chat_notification_preferences
+      WHERE user_id = @userId::UUID AND is_muted = TRUE
+      ORDER BY updated_at DESC
+      ''',
+      substitutionValues: {'userId': userId},
+    );
+
+    return result.map((row) => row[0] as String).toList();
   }
 
   /// Convert database row to Chat model
@@ -563,6 +617,8 @@ class ChatService {
       editedAt: row[7] as DateTime?,
       deletedAt: row[8] as DateTime?,
       isDeleted: row[9] as bool? ?? false,
+      mediaUrl: row[10] as String?,
+      mediaType: row[11] as String?,
     );
   }
 }

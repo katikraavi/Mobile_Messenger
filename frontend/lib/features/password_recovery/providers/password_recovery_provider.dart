@@ -78,7 +78,6 @@ class PasswordRecoveryNotifier extends StateNotifier<PasswordRecoveryState> {
   /// Request password reset email
   Future<void> requestPasswordReset({
     required String email,
-    required String userId,
   }) async {
     state = state.copyWith(
       isLoading: true,
@@ -89,7 +88,6 @@ class PasswordRecoveryNotifier extends StateNotifier<PasswordRecoveryState> {
     try {
       final response = await recoveryService.requestPasswordReset(
         email: email,
-        userId: userId,
       );
 
       if (response.success) {

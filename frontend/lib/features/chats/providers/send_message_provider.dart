@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
+import 'package:frontend/core/notifications/app_feedback_service.dart';
 import '../models/message_model.dart';
 import '../services/chat_api_service.dart';
 import '../services/message_encryption_service.dart';
@@ -52,6 +53,8 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
 
   final Ref ref;
 
+  static const _baseUrl = 'http://localhost:8081';
+
   /// Send a message to a chat with optimistic updates (T027)
   /// 
   /// Parameters:
@@ -74,10 +77,74 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
     required String token,
     required String currentUserId,
   }) async {
+    final optimisticId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticCreatedAt = DateTime.now().toUtc();
+
+    final optimisticMessage = Message(
+      id: optimisticId,
+      chatId: chatId,
+      senderId: currentUserId,
+      recipientId: '',
+      encryptedContent: plaintext,
+      status: 'sent',
+      createdAt: optimisticCreatedAt,
+      isSending: true,
+      error: null,
+      decryptionError: null,
+    );
+
+    await _sendMessageInternal(
+      chatId: chatId,
+      plaintext: plaintext,
+      token: token,
+      currentUserId: currentUserId,
+      optimisticMessage: optimisticMessage,
+      addOptimisticMessage: true,
+    );
+  }
+
+  Future<void> retryMessage({
+    required Message failedMessage,
+    required String token,
+    required String currentUserId,
+  }) async {
+    final plaintext = failedMessage.decryptedContent ?? failedMessage.encryptedContent;
+    final retryingMessage = failedMessage.copyWith(
+      senderId: currentUserId,
+      isSending: true,
+      error: null,
+      decryptionError: null,
+    );
+
+    await _sendMessageInternal(
+      chatId: failedMessage.chatId,
+      plaintext: plaintext,
+      token: token,
+      currentUserId: currentUserId,
+      optimisticMessage: retryingMessage,
+      addOptimisticMessage: false,
+    );
+  }
+
+  void clearError() {
+    if (state.error == null) {
+      return;
+    }
+
+    state = state.copyWith(error: null);
+  }
+
+  Future<void> _sendMessageInternal({
+    required String chatId,
+    required String plaintext,
+    required String token,
+    required String currentUserId,
+    required Message optimisticMessage,
+    required bool addOptimisticMessage,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      // Validate message content
       if (plaintext.isEmpty) {
         throw ArgumentError('Message cannot be empty');
       }
@@ -86,53 +153,34 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
         throw ArgumentError('Message exceeds 5000 character limit');
       }
 
-      // Create optimistic message with temporary ID
-      final optimisticId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
-      // Use UTC to match server timestamp format for consistent sorting
-      final now = DateTime.now().toUtc();
-      
-      final optimisticMessage = Message(
-        id: optimisticId,
-        chatId: chatId,
-        senderId: currentUserId,
-        recipientId: '', // Will be filled by server
-        encryptedContent: plaintext, // Will show actual content for MVP
-        status: 'sent',
-        createdAt: now,
-        isSending: true, // Mark as sending
-        error: null,
-        decryptionError: null,
-      );
+      if (addOptimisticMessage) {
+        print('[SendMessage] 📤 Optimistic update: Adding message ${optimisticMessage.id}');
+        _updateMessagesOptimistic(chatId, token, currentUserId, optimisticMessage, isAdding: true);
+      } else {
+        print('[SendMessage] 🔁 Retrying failed message ${optimisticMessage.id}');
+        _upsertLocalMessage(chatId, token, currentUserId, optimisticMessage);
+      }
 
-      // Immediately add optimistic message to the messages list
-      print('[SendMessage] 📤 Optimistic update: Adding message ${optimisticId}');
-      _updateMessagesOptimistic(chatId, token, currentUserId, optimisticMessage, isAdding: true);
-
-      // For MVP: Simple base64 encoding (not production encryption)
       final encryptedContent = base64Encode(utf8.encode(plaintext));
+      final apiService = ChatApiService(baseUrl: _baseUrl);
 
-      // Get API service and send message
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
-      
       final sentMessage = await apiService.sendMessage(
         token: token,
         chatId: chatId,
         encryptedContent: encryptedContent,
       );
 
-      // Decrypt the sent message
       final decryptedMessage = await MessageEncryptionService.decryptMessage(sentMessage);
 
       print('[SendMessage] ✓ Message sent and decrypted: ${decryptedMessage.id}');
 
-      // Replace optimistic message with server response
       _updateMessagesOptimistic(
         chatId,
         token,
         currentUserId,
         decryptedMessage,
         isAdding: false,
-        replaceId: optimisticId,
+        replaceId: optimisticMessage.id,
       );
 
       state = state.copyWith(
@@ -141,28 +189,45 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
       );
     } catch (e, st) {
       print('[SendMessage] ❌ Error sending message: $e\n$st');
-      
-      // Update optimistic message with error
+
       final errorMessage = e.toString();
-      final failedMessage = Message(
-        id: 'temp_error_${DateTime.now().millisecondsSinceEpoch}',
-        chatId: chatId,
-        senderId: currentUserId,
-        recipientId: '',
-        encryptedContent: plaintext,
-        status: 'sent',
-        createdAt: DateTime.now(),
+      final failedMessage = optimisticMessage.copyWith(
         isSending: false,
         error: errorMessage,
-        decryptionError: null,
+      );
+
+      _updateMessagesOptimistic(
+        chatId,
+        token,
+        currentUserId,
+        failedMessage,
+        isAdding: false,
+        replaceId: optimisticMessage.id,
       );
 
       state = state.copyWith(
         isLoading: false,
         error: errorMessage,
       );
-      
-      // Don't rethrow - let UI handle error state
+
+      AppFeedbackService.showError(
+        'Message was not sent. Use Send again to retry.',
+      );
+    }
+  }
+
+  void _upsertLocalMessage(
+    String chatId,
+    String token,
+    String currentUserId,
+    Message message,
+  ) {
+    try {
+      final cacheKey = (chatId: chatId, token: token, currentUserId: currentUserId);
+      final messagesNotifier = ref.read(localMessagesProvider(cacheKey).notifier);
+      messagesNotifier.upsertMessage(message);
+    } catch (e) {
+      print('[SendMessage] ⚠️ Error updating failed message for retry: $e');
     }
   }
 
@@ -189,7 +254,7 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
         messagesNotifier.addMessage(message);
       } else if (replaceId != null) {
         // Replace optimistic message with server response
-        print('[SendMessage] 🔄 Replacing optimistic message ${replaceId} → ${message.id}');
+        print('[SendMessage] 🔄 Replacing optimistic message $replaceId → ${message.id}');
         messagesNotifier.replaceOptimisticMessage(replaceId, message);
       }
     } catch (e) {

@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart' as img;
 
 /// Media File Model
@@ -20,14 +19,15 @@ class PickedMediaFile {
 
   bool get isImage => mimeType.startsWith('image/');
   bool get isVideo => mimeType.startsWith('video/');
-  bool get isValid => sizeBytes > 0 && sizeBytes <= 20971520; // 20MB
+  bool get isAudio => mimeType.startsWith('audio/');
+  bool get isValid => sizeBytes > 0 && sizeBytes <= 52428800; // 50MB
 }
 
 /// Media Picker Service (T073)
 /// 
 /// Handles selecting images and videos from device
 class MediaPickerService {
-  static const int maxFileSize = 20971520; // 20MB in bytes
+  static const int maxFileSize = 52428800; // 50MB in bytes
   static const List<String> allowedMimeTypes = [
     'image/jpeg',
     'image/png',
@@ -36,6 +36,12 @@ class MediaPickerService {
     'video/mp4',
     'video/quicktime',
     'video/x-msvideo',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/aac',
+    'audio/x-m4a',
   ];
 
   static final _picker = img.ImagePicker();
@@ -60,7 +66,7 @@ class MediaPickerService {
 
       if (bytes.length > maxFileSize) {
         throw Exception(
-          'Image too large: ${bytes.length ~/ 1048576}MB (max 20MB)',
+          'Image too large: ${bytes.length ~/ 1048576}MB (max 50MB)',
         );
       }
 
@@ -72,7 +78,7 @@ class MediaPickerService {
         sizeBytes: bytes.length,
       );
     } catch (e) {
-      print('[MediaPickerService] ❌ Error picking image: $e');
+      debugPrint('[MediaPickerService] Error picking image: $e');
       rethrow;
     }
   }
@@ -97,7 +103,7 @@ class MediaPickerService {
 
       if (bytes.length > maxFileSize) {
         throw Exception(
-          'Video too large: ${bytes.length ~/ 1048576}MB (max 20MB)',
+          'Video too large: ${bytes.length ~/ 1048576}MB (max 50MB)',
         );
       }
 
@@ -109,7 +115,7 @@ class MediaPickerService {
         sizeBytes: bytes.length,
       );
     } catch (e) {
-      print('[MediaPickerService] ❌ Error picking video: $e');
+      debugPrint('[MediaPickerService] Error picking video: $e');
       rethrow;
     }
   }
@@ -130,7 +136,7 @@ class MediaPickerService {
 
       if (bytes.length > maxFileSize) {
         throw Exception(
-          'File too large: ${bytes.length ~/ 1048576}MB (max 20MB)',
+          'File too large: ${bytes.length ~/ 1048576}MB (max 50MB)',
         );
       }
 
@@ -142,7 +148,7 @@ class MediaPickerService {
         sizeBytes: bytes.length,
       );
     } catch (e) {
-      print('[MediaPickerService] ❌ Error picking media: $e');
+      debugPrint('[MediaPickerService] Error picking media: $e');
       rethrow;
     }
   }
@@ -159,6 +165,10 @@ class MediaPickerService {
       'mp4': 'video/mp4',
       'mov': 'video/quicktime',
       'avi': 'video/x-msvideo',
+      'wav': 'audio/wav',
+      'mp3': 'audio/mpeg',
+      'm4a': 'audio/x-m4a',
+      'aac': 'audio/aac',
     };
     return mimeMap[ext] ?? 'application/octet-stream';
   }

@@ -17,6 +17,8 @@ class MessageInputBox extends StatefulWidget {
   final VoidCallback? onAttachmentTap;
   final VoidCallback? onImageTap; // Callback for image attachment (T078)
   final VoidCallback? onVideoTap; // Callback for video attachment (T078)
+  final VoidCallback? onAudioTap;
+  final bool isRecordingAudio;
   final int maxLength;
   final TextEditingController? controller;
   
@@ -36,6 +38,8 @@ class MessageInputBox extends StatefulWidget {
     this.onAttachmentTap,
     this.onImageTap,
     this.onVideoTap,
+    this.onAudioTap,
+    this.isRecordingAudio = false,
     this.maxLength = 5000,
     this.controller,
     this.onTypingStart,
@@ -177,6 +181,16 @@ class _MessageInputBoxState extends State<MessageInputBox> {
               icon: Icon(Icons.videocam),
               onPressed: widget.isLoading ? null : widget.onVideoTap,
               tooltip: 'Attach video',
+            ),
+
+          if (widget.onAudioTap != null)
+            IconButton(
+              icon: Icon(
+                widget.isRecordingAudio ? Icons.stop_circle_outlined : Icons.mic,
+                color: widget.isRecordingAudio ? Colors.red : null,
+              ),
+              onPressed: widget.isLoading ? null : widget.onAudioTap,
+              tooltip: widget.isRecordingAudio ? 'Stop recording' : 'Record audio',
             ),
 
           // Message input field

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'media_picker_service.dart';
 
 /// Media Upload Service Model
@@ -77,8 +77,8 @@ class MediaUploadService {
         throw Exception('Invalid media file');
       }
 
-      print(
-          '[MediaUploadService] 📤 Uploading ${pickedMedia.mimeType}: ${pickedMedia.sizeBytes ~/ 1024}KB');
+        debugPrint(
+          '[MediaUploadService] Uploading ${pickedMedia.mimeType}: ${pickedMedia.sizeBytes ~/ 1024}KB');
 
       // For MVP, upload as raw bytes with headers (multipart would need http_parser)
       final url = Uri.parse('$_baseUrl/api/media/upload');
@@ -97,11 +97,11 @@ class MediaUploadService {
       if (response.statusCode == 201) {
         final mediaData = jsonDecode(response.body) as Map<String, dynamic>;
         final uploadedMedia = UploadedMedia.fromJson(mediaData);
-        print(
-            '[MediaUploadService] ✅ Upload successful: ${uploadedMedia.id}');
+        debugPrint(
+          '[MediaUploadService] Upload successful: ${uploadedMedia.id}');
         return uploadedMedia;
       } else if (response.statusCode == 413) {
-        throw Exception('File too large (max 20MB)');
+        throw Exception('File too large (max 50MB)');
       } else if (response.statusCode == 401) {
         throw Exception('Unauthorized: Invalid or expired token');
       } else if (response.statusCode >= 400) {
@@ -111,7 +111,7 @@ class MediaUploadService {
         throw Exception('Upload failed: ${response.statusCode}');
       }
     } catch (e) {
-      print('[MediaUploadService] ❌ Upload error: $e');
+      debugPrint('[MediaUploadService] Upload error: $e');
       rethrow;
     }
   }
@@ -145,7 +145,7 @@ class MediaUploadService {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body) as Map<String, dynamic>;
-        print('[MediaUploadService] ✓ Media attached to message: $messageId');
+        debugPrint('[MediaUploadService] Media attached to message: $messageId');
         return result;
       } else if (response.statusCode == 401) {
         throw Exception('Unauthorized: Invalid or expired token');
@@ -157,7 +157,7 @@ class MediaUploadService {
         throw Exception('Failed to attach media: ${response.statusCode}');
       }
     } catch (e) {
-      print('[MediaUploadService] ❌ Attach error: $e');
+      debugPrint('[MediaUploadService] Attach error: $e');
       rethrow;
     }
   }
@@ -176,7 +176,7 @@ class MediaUploadService {
     try {
       final url = Uri.parse('$_baseUrl/api/media/$mediaId/download');
 
-      print('[MediaUploadService] 📥 Downloading media: $mediaId');
+      debugPrint('[MediaUploadService] Downloading media: $mediaId');
 
       final response = await _httpClient.get(
         url,
@@ -186,7 +186,7 @@ class MediaUploadService {
       );
 
       if (response.statusCode == 200) {
-        print('[MediaUploadService] ✅ Download complete: $mediaId');
+        debugPrint('[MediaUploadService] Download complete: $mediaId');
         return response.bodyBytes;
       } else if (response.statusCode == 401) {
         throw Exception('Unauthorized: Invalid or expired token');
@@ -196,7 +196,7 @@ class MediaUploadService {
         throw Exception('Download failed: ${response.statusCode}');
       }
     } catch (e) {
-      print('[MediaUploadService] ❌ Download error: $e');
+      debugPrint('[MediaUploadService] Download error: $e');
       rethrow;
     }
   }

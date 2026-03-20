@@ -1,37 +1,31 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:shelf/shelf.dart';
 import '../services/email_service.dart';
 import '../services/rate_limit_service.dart';
-import '../services/token_service.dart';
+import '../services/password_reset_service.dart';
 
 /// Handler for initiating password reset
 /// 
-/// POST /api/auth/password-reset/request
-/// Request: { "email": "user@example.com", "userId": "user-uuid" }
+/// POST /auth/password-reset/request
+/// Request: { "email": "user@example.com" }
 /// Response: { "success": true, "message": "Reset email sent" }
 Future<Response> requestPasswordReset(
   Request request,
-  TokenService tokenService,
   EmailService emailService,
   RateLimitService rateLimitService,
-  dynamic passwordResetService, // Deferred - would be PasswordResetService when DB is available
+  PasswordResetService passwordResetService,
 ) async {
   try {
     // Parse request
     final body = await request.readAsString();
     final data = jsonDecode(body) as Map<String, dynamic>;
-    final email = data['email'] as String?;
-    final userId = data['userId'] as String?;
+    final email = (data['email'] as String?)?.trim().toLowerCase();
 
     if (email == null || email.isEmpty) {
       return Response.badRequest(
         body: jsonEncode({'error': 'Email is required'}),
-      );
-    }
-
-    if (userId == null || userId.isEmpty) {
-      return Response.badRequest(
-        body: jsonEncode({'error': 'UserId is required'}),
+        headers: {'Content-Type': 'application/json'},
       );
     }
 
@@ -39,6 +33,7 @@ Future<Response> requestPasswordReset(
     if (!email.contains('@')) {
       return Response.badRequest(
         body: jsonEncode({'error': 'Invalid email format'}),
+        headers: {'Content-Type': 'application/json'},
       );
     }
 
@@ -54,44 +49,57 @@ Future<Response> requestPasswordReset(
           'remainingAttempts': remaining,
           'resetTime': resetTime?.toIso8601String(),
         }),
+        headers: {'Content-Type': 'application/json'},
       );
     }
 
     // Record attempt for rate limiting
     await rateLimitService.recordAttempt('password_reset:$email');
 
+    final userResult = await passwordResetService.connection.query(
+      'SELECT id, username FROM "users" WHERE email = @email LIMIT 1',
+      substitutionValues: {'email': email},
+    );
+
+    if (userResult.isEmpty) {
+      return Response(
+        404,
+        body: jsonEncode({
+          'error': 'No account found for this email.',
+        }),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    final user = userResult.first.toColumnMap();
+    final userId = user['id'] as String;
+    final userName = (user['username'] as String?) ?? email.split('@').first;
+
     // Generate token and send email
-    final token = await passwordResetService.createResetToken(userId, email);
+    final token = await passwordResetService.createResetToken(userId);
+
+    final appBaseUrl = Platform.environment['APP_BASE_URL'] ?? 'http://localhost:8081';
+    final resetLink = '$appBaseUrl/reset?token=$token';
     
     // Build password reset email
     final emailMessage = emailService.buildPasswordResetEmail(
       recipientEmail: email,
-      recipientName: email.split('@')[0],
-      resetLink: 'https://app.messenger.com/reset?token=$token',
+      recipientName: userName,
+      resetLink: resetLink,
       expiresIn: '24 hours',
     );
 
-    // Send email
-    try {
-      await emailService.sendEmail(emailMessage);
-    } catch (emailError) {
-      print('[WARNING] Email send failed: $emailError');
-      // Continue - in dev mode, token is logged to console
-    }
+    // Send email. This now fails fast when SMTP delivery fails.
+    await emailService.sendEmail(emailMessage);
 
-    // Development mode: Include token in response for manual reset
-    final bool isDevelopment = !bool.fromEnvironment('dart.vm.product');
+    final successMessage = emailService.isUsingMailhog
+        ? 'Password reset email captured in MailHog at http://localhost:8025.'
+        : 'Password reset email request accepted. If it does not arrive, check spam and verify your SMTP sender configuration.';
+
     final responseBody = {
       'success': true,
-      'message': isDevelopment
-        ? 'Development: Email logged to console. Token: $token'
-        : 'Password reset email sent. Check your inbox.',
+      'message': successMessage,
     };
-    
-    if (isDevelopment) {
-      responseBody['token'] = token;
-      responseBody['resetLink'] = 'https://app.messenger.com/reset?token=$token';
-    }
 
     return Response.ok(
       jsonEncode(responseBody),
@@ -113,8 +121,7 @@ Future<Response> requestPasswordReset(
 /// Response: { "success": true, "message": "Password reset successfully" }
 Future<Response> confirmPasswordReset(
   Request request,
-  TokenService tokenService,
-  dynamic passwordResetService, // Deferred - would be PasswordResetService when DB is available
+  PasswordResetService passwordResetService,
 ) async {
   try {
     // Parse request
@@ -132,13 +139,6 @@ Future<Response> confirmPasswordReset(
     if (newPassword == null || newPassword.isEmpty) {
       return Response.badRequest(
         body: jsonEncode({'error': 'New password is required'}),
-      );
-    }
-
-    // Validate token format
-    if (!tokenService.isValidTokenFormat(token)) {
-      return Response.badRequest(
-        body: jsonEncode({'error': 'Invalid token format'}),
       );
     }
 
@@ -162,8 +162,25 @@ Future<Response> confirmPasswordReset(
       );
     }
 
-    // Verify reset token and update password
-    final resetUserId = await passwordResetService.verifyResetToken(token, newPassword);
+    // Verify token first and capture user id.
+    final resetUserId = await passwordResetService.verifyResetToken(token);
+    if (resetUserId == null) {
+      return Response(
+        400,
+        body: jsonEncode({'error': 'Invalid or expired reset token'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    final newPasswordHash = newPassword.hashCode.toRadixString(36);
+    final didReset = await passwordResetService.resetPassword(token, newPasswordHash);
+    if (!didReset) {
+      return Response(
+        400,
+        body: jsonEncode({'error': 'Invalid or expired reset token'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
     
     return Response.ok(
       jsonEncode({

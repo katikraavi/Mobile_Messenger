@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'invite_service.dart';
+import '../../features/chats/widgets/user_avatar_widget.dart';
 
 class PendingInvitesScreen extends StatefulWidget {
   final String userId;
@@ -152,13 +153,10 @@ class _PendingInvitesScreenState extends State<PendingInvitesScreen> {
                         return Card(
                           margin: const EdgeInsets.all(8),
                           child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage: invite.senderAvatar != null
-                                  ? NetworkImage(invite.senderAvatar!)
-                                  : null,
-                              child: invite.senderAvatar == null
-                                  ? const Icon(Icons.person)
-                                  : null,
+                            leading: UserAvatarWidget(
+                              imageUrl: invite.senderAvatar,
+                              radius: 20,
+                              username: invite.senderName,
                             ),
                             title: Text(
                               '${invite.senderName} wants to chat',

@@ -2,17 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:provider/provider.dart' as provider_pkg;
 import 'dart:async';
+import 'dart:convert';
+import 'package:frontend/core/notifications/app_feedback_service.dart';
+import 'package:frontend/core/services/app_exception_logger.dart';
 import '../models/message_model.dart' show Message;
 import '../providers/messages_provider.dart';
 import '../providers/message_status_provider.dart';
 import '../providers/send_message_provider.dart';
 import '../providers/typing_indicator_provider.dart';
 import '../providers/websocket_provider.dart';
+import '../services/chat_api_service.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/message_input_box.dart';
 import '../widgets/typing_indicator.dart';
 import '../widgets/edit_message_dialog.dart';
 import '../widgets/user_avatar_widget.dart';
+import '../services/media_picker_service.dart';
+import '../services/media_upload_service.dart';
+import '../services/message_encryption_service.dart';
+import '../services/audio_recording_service.dart';
+import '../services/chat_notification_settings_service.dart';
+import '../../auth/providers/auth_provider.dart' as auth;
 
 String _displayName(String? value) {
   if (value == null || value.isEmpty) {
@@ -21,10 +31,6 @@ String _displayName(String? value) {
 
   return value[0].toUpperCase() + value.substring(1);
 }
-import '../services/media_picker_service.dart';
-import '../services/media_upload_service.dart';
-import '../../auth/providers/auth_provider.dart' as auth;
-import '../../../core/services/websocket_service.dart';
 
 /// Screen for displaying a single chat conversation (T042-T043, T025-T027)
 /// 
@@ -63,25 +69,23 @@ class ChatDetailScreen extends ConsumerStatefulWidget {
 
 class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
   late ScrollController _scrollController;
-  // Local list of optimistic messages pending server confirmation (T027)
-  final List<Message> _pendingMessages = [];
-  
-  // WebSocket service for sending typing events (T044)
-  late final _webSocketService = provider_pkg.Provider.of<WebSocketService?>(
-    context,
-    listen: false,
-  );
-  
-  // Map to track who is typing
-  final Map<String, bool> _typingUsers = {};
+  late final WebSocketNotifier _webSocketNotifier;
+  LocalMessagesNotifier? _localMessagesNotifier;
   
   // Track whether we've enabled viewer active mode
   bool _viewerActiveEnabled = false;
+  bool _isRecordingAudio = false;
+  bool _isChatMuted = false;
+  bool _notificationSettingsLoaded = false;
+  String? _headerErrorMessage;
+  bool _showReconnectAction = false;
+  bool _isReconnectInProgress = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _webSocketNotifier = ref.read(messageWebSocketProvider.notifier);
     
     // Connect to WebSocket for real-time messaging after frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -106,20 +110,162 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
       }
       
       // Get the websocket service from riverpod
-      final wsNotifier = ref.read(messageWebSocketProvider.notifier);
-      
       // Connect if not already connected
       if (!ref.read(messageWebSocketProvider).isConnected) {
-        await wsNotifier.connect(token: token, userId: userId);
+        await _webSocketNotifier.connect(token: token, userId: userId);
       }
       
       // Subscribe to this chat
-      wsNotifier.subscribeToChat(widget.chatId);
+      _webSocketNotifier.subscribeToChat(widget.chatId);
+      await _reloadMessagesAfterReconnect();
+      _clearHeaderError();
       
       print('[ChatDetail] ✓ Connected to WebSocket for chat ${widget.chatId}');
     } catch (e) {
-      print('[ChatDetail] WebSocket connection error: $e');
+      AppExceptionLogger.log(
+        e,
+        context: 'ChatDetailScreen._connectWebSocket',
+      );
+      _showHeaderError(
+        'Realtime connection lost. Showing the last synced messages.',
+        canRetry: true,
+      );
+      AppFeedbackService.showWarning(
+        'Realtime updates are unavailable for this chat. Showing the last synced messages.',
+      );
     }
+  }
+
+  Future<void> _reloadMessagesAfterReconnect() async {
+    final authProvider = provider_pkg.Provider.of<auth.AuthProvider>(
+      context,
+      listen: false,
+    );
+    final token = authProvider.token;
+    final userId = authProvider.user?.userId;
+
+    if (token == null || userId == null) {
+      return;
+    }
+
+    await ref
+        .read(
+          localMessagesProvider(
+            (chatId: widget.chatId, token: token, currentUserId: userId),
+          ).notifier,
+        )
+        .loadMessagesFromServer();
+  }
+
+  void _showHeaderError(String message, {required bool canRetry}) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _headerErrorMessage = message;
+      _showReconnectAction = canRetry;
+      _isReconnectInProgress = false;
+    });
+  }
+
+  void _clearHeaderError() {
+    if (!mounted) {
+      return;
+    }
+
+    if (_headerErrorMessage == null && !_isReconnectInProgress) {
+      return;
+    }
+
+    setState(() {
+      _headerErrorMessage = null;
+      _showReconnectAction = false;
+      _isReconnectInProgress = false;
+    });
+  }
+
+  Future<void> _retryRealtimeConnection() async {
+    if (_isReconnectInProgress) {
+      return;
+    }
+
+    setState(() {
+      _isReconnectInProgress = true;
+      _headerErrorMessage = 'Reconnecting to realtime updates...';
+      _showReconnectAction = false;
+    });
+
+    try {
+      await _webSocketNotifier.disconnect();
+      await _connectWebSocket();
+      if (!mounted) {
+        return;
+      }
+      AppFeedbackService.showInfo('Realtime connection restored.');
+    } catch (e, st) {
+      AppExceptionLogger.log(
+        e,
+        stackTrace: st,
+        context: 'ChatDetailScreen._retryRealtimeConnection',
+      );
+      _showHeaderError(
+        'Reconnect failed. Messenger is still showing the last stable messages.',
+        canRetry: true,
+      );
+      AppFeedbackService.showError('Reconnect failed. Try again.');
+    }
+  }
+
+  PreferredSizeWidget? _buildHeaderErrorBanner() {
+    if (_headerErrorMessage == null) {
+      return null;
+    }
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(52),
+      child: Container(
+        width: double.infinity,
+        color: Colors.orange.shade50,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 18,
+              color: Colors.orange.shade900,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _headerErrorMessage!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (_isReconnectInProgress)
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.orange.shade900,
+                ),
+              )
+            else if (_showReconnectAction)
+              TextButton(
+                onPressed: _retryRealtimeConnection,
+                child: const Text('Retry'),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -129,14 +275,16 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     
     // Unsubscribe from chat and optionally disconnect
     try {
-      final wsNotifier = ref.read(messageWebSocketProvider.notifier);
-      wsNotifier.unsubscribeFromChat();
+      _webSocketNotifier.unsubscribeFromChat();
       
       // Optionally disconnect if leaving the app entirely
       // For now, keep connection alive for other chats
       // wsNotifier.disconnect();
     } catch (e) {
-      print('[ChatDetail] Error disconnecting WebSocket: $e');
+      AppExceptionLogger.log(
+        e,
+        context: 'ChatDetailScreen.dispose',
+      );
     }
     
     super.dispose();
@@ -150,25 +298,17 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     
     if (_viewerActiveEnabled) {
       try {
-        final authProvider = provider_pkg.Provider.of<auth.AuthProvider>(
-          context,
-          listen: false,
-        );
-        final token = authProvider.token;
-        final userId = authProvider.user?.userId;
-        
-        if (token != null && userId != null) {
+        if (_localMessagesNotifier != null) {
           // Disable viewer mode - new messages should NOT auto-read
-          ref.read(
-            localMessagesProvider(
-              (chatId: widget.chatId, token: token, currentUserId: userId),
-            ).notifier,
-          ).setChatBeingViewed(false);
+          _localMessagesNotifier!.setChatBeingViewed(false);
           _viewerActiveEnabled = false;
           print('[ChatDetail] ✓ Viewer mode disabled');
         }
       } catch (e) {
-        print('[ChatDetail] Error disabling viewer: $e');
+        AppExceptionLogger.log(
+          e,
+          context: 'ChatDetailScreen.deactivate',
+        );
       }
     }
     
@@ -194,6 +334,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
           ref.read(autoMarkAsReadProvider((
             chatId: widget.chatId,
             token: authProvider.token!,
+            currentUserId: authProvider.user!.userId,
           )));
         }
       }
@@ -203,17 +344,18 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
   /// Send typing start/stop event via WebSocket (T044)
   void _sendTypingEvent(String eventType) {
     try {
-      final wsNotifier = ref.read(messageWebSocketProvider.notifier);
-      
       if (eventType == 'typing.start') {
-        wsNotifier.sendTyping(widget.chatId);
+        _webSocketNotifier.sendTyping(widget.chatId);
       } else if (eventType == 'typing.stop') {
-        wsNotifier.stopTyping(widget.chatId);
+        _webSocketNotifier.stopTyping(widget.chatId);
       }
       
       print('[ChatDetail] Sent typing event: $eventType');
     } catch (e) {
-      print('[ChatDetail] Typing event error: $e');
+      AppExceptionLogger.log(
+        e,
+        context: 'ChatDetailScreen._sendTypingEvent',
+      );
     }
   }
 
@@ -232,39 +374,20 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
   }
 
   /// Handle message retry (T025 error state)
-  void _handleRetry(Message failedMessage) {
+  Future<void> _handleRetry(Message failedMessage, String token, String currentUserId) async {
     // Only allow retry for messages with errors
-    if (failedMessage.error == null) return;
+    if (failedMessage.error == null) {
+      return;
+    }
 
-    // Re-add to pending messages and retry send
-    setState(() {
-      _pendingMessages.removeWhere((m) => m.id == failedMessage.id);
-    });
-
-    final newOptimisticMessage = failedMessage.copyWith(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-      error: null,
-      isSending: true,
+    await ref.read(sendMessageProvider.notifier).retryMessage(
+      failedMessage: failedMessage,
+      token: token,
+      currentUserId: currentUserId,
     );
-
-    _sendOptimisticMessage(newOptimisticMessage);
-  }
-
-  /// Send optimistic message with local tracking (T027)
-  void _sendOptimisticMessage(Message optimisticMessage) {
-    setState(() {
-      _pendingMessages.add(optimisticMessage);
-    });
     _scrollToBottom();
   }
 
-  /// Clear pending message by ID (T027)
-  void _clearPendingMessage(String messageId) {
-    setState(() {
-      _pendingMessages.removeWhere((m) => m.id == messageId);
-    });
-  }
-  
   /// Show context menu for message edit/delete (T052, T061)
   void _showMessageContextMenu(Message message, String token) {
     // Don't show menu for already deleted messages
@@ -448,12 +571,27 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
       print('[ChatDetail] ✅ Image uploaded: ${uploadedMedia.id}');
 
-      // Create message with media attached
-      // TODO: Implement media message creation when backend is ready
+      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
+      final sentMessage = await chatApiService.sendMessage(
+        token: token,
+        chatId: widget.chatId,
+        encryptedContent: base64Encode(utf8.encode('[Image]')),
+        mediaUrl: mediaPath,
+        mediaType: uploadedMedia.mimeType,
+      );
+      final decryptedMessage = await MessageEncryptionService.decryptMessage(sentMessage);
+
+      ref.read(
+        localMessagesProvider(
+          (chatId: widget.chatId, token: token, currentUserId: currentUserIdFromContext()),
+        ).notifier,
+      ).upsertMessage(decryptedMessage);
       
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Image uploaded: ${uploadedMedia.fileName}'),
+          content: Text('Image sent: ${uploadedMedia.originalName ?? uploadedMedia.fileName}'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -494,12 +632,27 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
       print('[ChatDetail] ✅ Video uploaded: ${uploadedMedia.id}');
 
-      // Create message with media attached
-      // TODO: Implement media message creation when backend is ready
+      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
+      final sentMessage = await chatApiService.sendMessage(
+        token: token,
+        chatId: widget.chatId,
+        encryptedContent: base64Encode(utf8.encode('[Video]')),
+        mediaUrl: mediaPath,
+        mediaType: uploadedMedia.mimeType,
+      );
+      final decryptedMessage = await MessageEncryptionService.decryptMessage(sentMessage);
+
+      ref.read(
+        localMessagesProvider(
+          (chatId: widget.chatId, token: token, currentUserId: currentUserIdFromContext()),
+        ).notifier,
+      ).upsertMessage(decryptedMessage);
       
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Video uploaded: ${uploadedMedia.fileName}'),
+          content: Text('Video sent: ${uploadedMedia.originalName ?? uploadedMedia.fileName}'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -509,6 +662,140 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
         SnackBar(content: Text('Failed to upload video: $e')),
       );
     }
+  }
+
+  Future<void> _handleAudioRecordingTap(String token) async {
+    final recordingService = AudioRecordingService.instance;
+
+    try {
+      if (!recordingService.isRecording) {
+        await recordingService.startRecording();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isRecordingAudio = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recording audio... tap the mic again to send')),
+        );
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _isRecordingAudio = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading audio...'),
+            duration: Duration(seconds: 30),
+          ),
+        );
+      }
+
+      final pickedMedia = await recordingService.stopRecording();
+      final uploadService = MediaUploadService();
+      final uploadedMedia = await uploadService.uploadMedia(
+        pickedMedia: pickedMedia,
+        token: token,
+      );
+
+      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
+      final sentMessage = await chatApiService.sendMessage(
+        token: token,
+        chatId: widget.chatId,
+        encryptedContent: base64Encode(utf8.encode('[Audio]')),
+        mediaUrl: mediaPath,
+        mediaType: uploadedMedia.mimeType,
+      );
+      final decryptedMessage = await MessageEncryptionService.decryptMessage(sentMessage);
+
+      ref.read(
+        localMessagesProvider(
+          (chatId: widget.chatId, token: token, currentUserId: currentUserIdFromContext()),
+        ).notifier,
+      ).upsertMessage(decryptedMessage);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Audio message sent')),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isRecordingAudio = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to record audio: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadNotificationSettings(String token) async {
+    try {
+      final isMuted = await ChatNotificationSettingsService.instance.fetchMuteStatus(
+        token: token,
+        chatId: widget.chatId,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isChatMuted = isMuted;
+        _notificationSettingsLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notificationSettingsLoaded = true;
+      });
+    }
+  }
+
+  Future<void> _toggleChatMute(String token) async {
+    final nextValue = !_isChatMuted;
+    try {
+      await ChatNotificationSettingsService.instance.setMuted(
+        token: token,
+        chatId: widget.chatId,
+        isMuted: nextValue,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isChatMuted = nextValue;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(nextValue ? 'Chat notifications muted' : 'Chat notifications unmuted'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update notifications: $e')),
+      );
+    }
+  }
+
+  String currentUserIdFromContext() {
+    final authProvider = provider_pkg.Provider.of<auth.AuthProvider>(
+      context,
+      listen: false,
+    );
+    return authProvider.user!.userId;
   }
 
   @override
@@ -525,12 +812,20 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
       );
     }
 
+    if (!_notificationSettingsLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadNotificationSettings(token);
+      });
+    }
+
     // Watch messages for this chat (T042) - using localMessagesProvider for real-time updates
-    final messages = ref.watch(
-      localMessagesProvider(
-        (chatId: widget.chatId, token: token, currentUserId: currentUserId),
-      ),
+    final localMessagesKey = (
+      chatId: widget.chatId,
+      token: token,
+      currentUserId: currentUserId,
     );
+    _localMessagesNotifier = ref.read(localMessagesProvider(localMessagesKey).notifier);
+    final messages = ref.watch(localMessagesProvider(localMessagesKey));
 
     // Notify the notifier that this chat is now being viewed - new messages should be auto-read
     ref.read(
@@ -555,6 +850,14 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
     // Watch send message state
     final sendState = ref.watch(sendMessageProvider);
+    ref.listen<SendMessageState>(sendMessageProvider, (previous, next) {
+      if (next.error == null || next.error == previous?.error) {
+        return;
+      }
+
+      AppFeedbackService.showError(next.error!);
+      ref.read(sendMessageProvider.notifier).clearError();
+    });
 
     // Watch message status updates via WebSocket (T020 - Message Status System)
     ref.watch(messageStatusUpdateProvider).whenData((statusUpdate) {
@@ -603,6 +906,28 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
         ),
         centerTitle: false,
         elevation: 1,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'toggle_mute') {
+                _toggleChatMute(token);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'toggle_mute',
+                child: Row(
+                  children: [
+                    Icon(_isChatMuted ? Icons.notifications_active : Icons.notifications_off),
+                    const SizedBox(width: 8),
+                    Text(_isChatMuted ? 'Unmute notifications' : 'Mute notifications'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+        bottom: _buildHeaderErrorBanner(),
       ),
       body: Column(
         children: [
@@ -640,9 +965,6 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             onSend: (text) async {
               // Stop typing indicator when sending
               ref.read(messageWebSocketProvider.notifier).stopTyping(widget.chatId);
-              
-              // Get current user name from auth (for future display)
-              final senderName = authProvider.user?.username ?? 'You';
 
               try {
                 // Send message via provider (handles optimistic update automatically)
@@ -682,6 +1004,10 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
             onVideoTap: () {
               _handleVideoAttachment(token);
             },
+            onAudioTap: () {
+              _handleAudioRecordingTap(token);
+            },
+            isRecordingAudio: _isRecordingAudio,
           ),
         ],
       ),
@@ -692,10 +1018,8 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
   Widget _buildMessagesView(BuildContext context, List<Message> messages, String token, String currentUserId) {
     // Combine server messages with local optimistic pending messages (T027)
     // Sort oldest first (natural order) - ListView shows top to bottom
-    final allMessages = [
-      ...messages,
-      ..._pendingMessages,
-    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt)); // Oldest first
+    final allMessages = [...messages]
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt)); // Oldest first
 
     if (allMessages.isEmpty) {
       return Center(
@@ -744,7 +1068,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
           isFirstFromSender: isFirstFromSender,
           isLastFromSender: isLastFromSender,
           onRetry: message.hasError
-              ? () => _handleRetry(message)
+              ? () => _handleRetry(message, token, currentUserId)
               : null,
           onLongPress: message.senderId == currentUserId
               ? () => _showMessageContextMenu(message, token)

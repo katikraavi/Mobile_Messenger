@@ -76,13 +76,16 @@ void main() async {
     ];
 
     int createdCount = 0;
-    int skippedCount = 0;
+    int updatedCount = 0;
 
     for (final user in testUsers) {
       final username = user['username'] as String;
       final email = user['email'] as String;
       final password = user['password'] as String;
       final fullName = user['full_name'] as String;
+      final normalizedEmail = email.toLowerCase();
+      final passwordHash = _hashPassword(password);
+      final now = DateTime.now().toUtc();
 
       print('\n[...] Processing @$username ($email)...');
 
@@ -90,21 +93,36 @@ void main() async {
       final existing = await connection.query(
         'SELECT id FROM "users" WHERE email = @email OR username = @username',
         substitutionValues: {
-          'email': email,
+          'email': normalizedEmail,
           'username': username,
         },
       );
 
       if (existing.isNotEmpty) {
-        print('     [⊘] Already exists, skipping');
-        skippedCount++;
+        final userId = existing.first[0] as String;
+        await connection.execute(
+          '''UPDATE "users"
+             SET email = @email,
+                 username = @username,
+                 password_hash = @password_hash,
+                 email_verified = @email_verified
+             WHERE id = @id''',
+          substitutionValues: {
+            'id': userId,
+            'email': normalizedEmail,
+            'username': username,
+            'password_hash': passwordHash,
+            'email_verified': true,
+          },
+        );
+
+        print('     [↻] Updated existing user credentials');
+        updatedCount++;
         continue;
       }
 
       try {
         final userId = const Uuid().v4();
-        final passwordHash = _hashPassword(password);
-        final now = DateTime.now().toUtc();
 
         // Insert user
         await connection.execute(
@@ -112,7 +130,7 @@ void main() async {
              VALUES (@id, @email, @username, @password_hash, @email_verified, @created_at)''',
           substitutionValues: {
             'id': userId,
-            'email': email.toLowerCase(),
+            'email': normalizedEmail,
             'username': username,
             'password_hash': passwordHash,
             'email_verified': true, // Mark as verified for test users
@@ -152,7 +170,7 @@ void main() async {
     print('║ Summary                                              ║');
     print('╚════════════════════════════════════════════════════════╝');
     print('[✓] Created: $createdCount test users');
-    print('[⊘] Skipped: $skippedCount (already exist)');
+    print('[↻] Updated: $updatedCount existing users');
     print('');
     print('Test Users Ready:');
     print('  • alice / alice123');

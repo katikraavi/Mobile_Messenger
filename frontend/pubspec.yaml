@@ -53,6 +53,11 @@ dependencies:
   
   # Image picker for camera and gallery
   image_picker: ^1.0.0
+
+  # Cross-platform media playback with Linux desktop support
+  media_kit: ^1.1.11
+  media_kit_video: ^1.3.0
+  media_kit_libs_linux: ^1.1.3
   
   # Image processing and validation
   
@@ -60,6 +65,9 @@ dependencies:
   
   # Permission handling for camera and photo library access
   permission_handler: ^12.0.0
+  path_provider: ^2.1.5
+  record: ^6.1.2
+  flutter_local_notifications: ^19.4.2
   
   # Freezed code generation for immutable data classes
   freezed_annotation: ^3.1.0
@@ -73,6 +81,8 @@ dependencies:
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

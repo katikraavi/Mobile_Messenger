@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
+import 'user_avatar_widget.dart';
 
 /// Widget for displaying a single chat in the chat list
 /// 
@@ -42,19 +43,10 @@ class ChatListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       // Leading: Avatar placeholder (can be replaced with actual profile image)
-      leading: CircleAvatar(
+      leading: UserAvatarWidget(
+        imageUrl: null,
         radius: 24,
-        backgroundColor: Colors.blue[100],
-        child: Text(
-          otherUserName.isNotEmpty 
-            ? otherUserName[0].toUpperCase() 
-            : '?',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.blue,
-          ),
-        ),
+        username: otherUserName,
       ),
 
       // Title: Other participant's name

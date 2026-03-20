@@ -9,7 +9,7 @@ typedef Connection = PostgreSQLConnection;
 
 /// Message Handlers for Media Operations (T070-T072)
 class MediaHandlers {
-  static const String _tableName = 'message';
+  static const String _tableName = 'messages';
   static late MediaStorageService _mediaService;
 
   /// Initialize media service (call once on server startup)
@@ -37,6 +37,16 @@ class MediaHandlers {
     }
   }
 
+  static String? _getHeaderValue(Request request, String headerName) {
+    final target = headerName.toLowerCase();
+    for (final entry in request.headers.entries) {
+      if (entry.key.toLowerCase() == target) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
   /// Upload media file (T070)
   /// 
   /// Endpoint: POST /api/media/upload
@@ -54,7 +64,7 @@ class MediaHandlers {
   ) async {
     try {
       // Get JWT token
-      final authHeader = request.headers['Authorization'];
+      final authHeader = _getHeaderValue(request, 'authorization');
       final token = authHeader?.replaceFirst('Bearer ', '');
       if (token == null || token.isEmpty) {
         return Response(401, body: jsonEncode({'error': 'Missing token'}));
@@ -67,7 +77,7 @@ class MediaHandlers {
       }
 
       // Parse request (accepts both multipart/form-data and application/octet-stream)
-      final contentType = request.headers['Content-Type'] ?? '';
+      final contentType = _getHeaderValue(request, 'content-type') ?? '';
       if (!contentType.contains('multipart/form-data') && 
           !contentType.contains('application/octet-stream')) {
         return Response(400,
@@ -76,14 +86,18 @@ class MediaHandlers {
 
       // For now, read raw bytes and extract metadata from headers
       // In production, use http_parser package for proper multipart handling
-      final bodyBytes = await request.read().toList();
-      final fileBytes = bodyBytes.isNotEmpty 
-        ? Uint8List.fromList(bodyBytes[0] as List<int>)
-        : Uint8List(0);
+      final bodyBytes = await request.read().fold<BytesBuilder>(
+        BytesBuilder(copy: false),
+        (builder, chunk) {
+          builder.add(chunk);
+          return builder;
+        },
+      );
+      final fileBytes = bodyBytes.takeBytes();
 
       // Get MIME type from Content-Type header
-      final fileMimeType = request.headers['X-File-Type'] ?? 'application/octet-stream';
-      final fileName = request.headers['X-File-Name'] ?? 'upload_${DateTime.now().millisecondsSinceEpoch}';
+      final fileMimeType = _getHeaderValue(request, 'x-file-type') ?? 'application/octet-stream';
+      final fileName = _getHeaderValue(request, 'x-file-name') ?? 'upload_${DateTime.now().millisecondsSinceEpoch}';
 
       if (fileBytes.isEmpty) {
         return Response(400, body: jsonEncode({'error': 'No file data'}));
@@ -130,7 +144,7 @@ class MediaHandlers {
   ) async {
     try {
       // Get JWT token
-      final authHeader = request.headers['Authorization'];
+      final authHeader = _getHeaderValue(request, 'authorization');
       final token = authHeader?.replaceFirst('Bearer ', '');
       if (token == null || token.isEmpty) {
         return Response(401, body: jsonEncode({'error': 'Missing token'}));
@@ -189,7 +203,7 @@ class MediaHandlers {
   ) async {
     try {
       // Get JWT token
-      final authHeader = request.headers['Authorization'];
+      final authHeader = _getHeaderValue(request, 'authorization');
       final token = authHeader?.replaceFirst('Bearer ', '');
       if (token == null || token.isEmpty) {
         return Response(401, body: jsonEncode({'error': 'Missing token'}));
@@ -244,7 +258,7 @@ class MediaHandlers {
         ''',
         substitutionValues: {
           'messageId': messageId,
-          'mediaUrl': '/api/media/$mediaId/download',
+          'mediaUrl': '/uploads/media/${media.fileName}',
           'mediaType': media.mimeType,
         },
       );
@@ -258,7 +272,7 @@ class MediaHandlers {
             'message_id': messageId,
             'media_id': mediaId,
             'media_type': media.mimeType,
-            'media_url': '/api/media/$mediaId/download',
+            'media_url': '/uploads/media/${media.fileName}',
           }));
     } catch (e) {
       print('[MediaHandlers] ❌ Attach media error: $e');

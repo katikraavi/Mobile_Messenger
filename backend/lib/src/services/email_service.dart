@@ -29,6 +29,32 @@ class EmailService {
     this.smtpSecure = false,
   });
 
+  bool get isConfigured => !_isNotConfigured();
+
+  bool get isUsingMailhog =>
+      (smtpHost ?? '').trim().toLowerCase() == 'mailhog';
+
+  List<String> getConfigurationWarnings() {
+    final warnings = <String>[];
+    final normalizedHost = (smtpHost ?? '').trim().toLowerCase();
+    final normalizedSender = (senderEmail ?? '').trim().toLowerCase();
+
+    if (normalizedHost.contains('sendgrid')) {
+      warnings.add(
+        'SendGrid requires SMTP_FROM_EMAIL to be a verified sender or domain-authenticated address.',
+      );
+
+      if (RegExp(r'@(gmail|outlook|hotmail|yahoo)\.com$')
+          .hasMatch(normalizedSender)) {
+        warnings.add(
+          'Current SMTP_FROM_EMAIL looks like a personal inbox address. SendGrid often accepts the SMTP request but drops or suppresses mail if the sender is not verified.',
+        );
+      }
+    }
+
+    return warnings;
+  }
+
   /// Build a verification email
   /// 
   /// Parameters:

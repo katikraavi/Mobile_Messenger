@@ -34,6 +34,28 @@ Expected result:
 - PostgreSQL running on `localhost:5432`
 - Flutter app connected and displaying UI
 
+### Real Email Smoke Test
+
+If you want a single command that:
+- starts the backend with Docker Compose
+- waits for health
+- runs the Flutter UI smoke test for registration and password reset email
+
+use:
+
+```bash
+./run_gmail_email_smoke_test.sh
+```
+
+This expects either:
+- your local ignored `.env` to already contain Gmail SMTP settings
+
+The script then runs the frontend live integration test automatically.
+
+To configure another machine, copy `.env.example` to `.env` and then choose one of these SMTP modes:
+- MailHog for local capture only
+- Gmail SMTP for real inbox delivery
+
 ## Project Structure
 
 ```
@@ -119,7 +141,15 @@ docker-compose down -v
 
 # Restart service
 docker-compose restart serverpod
+
+# Start backend using local SMTP settings from .env
+docker compose up -d --build
+
+# Start backend with Gmail SMTP and run live email smoke test
+./run_gmail_email_smoke_test.sh
 ```
+
+If your local ignored `.env` is configured for Gmail SMTP, plain `docker compose up` will send real emails. If `.env` is configured for MailHog, emails will be captured locally instead.
 
 ### Frontend Development
 

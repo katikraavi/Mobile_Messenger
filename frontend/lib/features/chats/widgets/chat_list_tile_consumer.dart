@@ -14,6 +14,7 @@ class ChatListTileConsumer extends ConsumerWidget {
   final Chat chat;
   final String currentUserId;
   final String? lastMessage;
+  final VoidCallback? onArchive;
 
   const ChatListTileConsumer({
     Key? key,
@@ -22,6 +23,7 @@ class ChatListTileConsumer extends ConsumerWidget {
     required this.chat,
     required this.currentUserId,
     this.lastMessage,
+    this.onArchive,
   }) : super(key: key);
 
   String _truncatePreview(String preview) {
@@ -44,24 +46,22 @@ class ChatListTileConsumer extends ConsumerWidget {
     final userProfileAsync = ref.watch(userProfileProvider((otherUserId, token)));
     return userProfileAsync.when(
       loading: () => ListTile(
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Colors.grey[300],
-          child: const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+        leading: Stack(
+          alignment: Alignment.center,
+          children: [
+            const UserAvatarWidget(radius: 24),
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
         ),
         title: const Text('Loading...'),
         subtitle: const Text('Fetching profile...'),
       ),
       error: (error, st) => ListTile(
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Colors.red[100],
-          child: Icon(Icons.error, color: Colors.red[400]),
-        ),
+        leading: const UserAvatarWidget(radius: 24),
         title: const Text('Error loading profile'),
         subtitle: const Text('Tap to retry'),
         onTap: () {
@@ -72,22 +72,11 @@ class ChatListTileConsumer extends ConsumerWidget {
         // No bold/unread logic, always normal style
 
         return ListTile(
-          leading: userProfile.profilePictureUrl != null && userProfile.profilePictureUrl!.isNotEmpty
-            ? UserAvatarWidget(
-                imageUrl: userProfile.profilePictureUrl!,
-                radius: 24,
-                username: userProfile.username,
-              )
-            : CircleAvatar(
-                radius: 24,
-                backgroundImage: AssetImage('assets/images/profile/defaultProfilePic.jpg'),
-                child: Text(
-                  userProfile.username != null && userProfile.username!.isNotEmpty
-                    ? userProfile.username![0].toUpperCase()
-                    : '?',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
+          leading: UserAvatarWidget(
+            imageUrl: userProfile.profilePictureUrl,
+            radius: 24,
+            username: userProfile.username,
+          ),
           title: Text(
             userProfile.username ?? 'Unknown',
             style: const TextStyle(
@@ -125,6 +114,11 @@ class ChatListTileConsumer extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            tooltip: 'Archive chat',
+            onPressed: onArchive,
           ),
           onTap: () {
             Navigator.of(context).push(

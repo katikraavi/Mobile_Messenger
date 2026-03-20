@@ -130,7 +130,8 @@ class PasswordResetService {
       
       // Clear rate limit counter for this user (successful reset)
       await connection.execute(
-        '''DELETE FROM password_reset_attempt WHERE user_id = @id''',
+        '''DELETE FROM password_reset_attempt
+           WHERE email = (SELECT email FROM "users" WHERE id = @id)''',
         substitutionValues: {'id': userId},
       );
       

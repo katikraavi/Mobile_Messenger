@@ -14,18 +14,23 @@ class PasswordRecoveryService {
   /// Request password reset email
   Future<PasswordRecoveryResponse> requestPasswordReset({
     required String email,
-    required String userId,
   }) async {
     try {
       final response = await httpClient.post(
         Uri.parse('$baseUrl/auth/password-reset/request'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'userId': userId}),
+        body: jsonEncode({'email': email}),
       );
 
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
         return PasswordRecoveryResponse.success(
-          message: 'Password reset email sent',
+          message: data['message'] ?? 'Password reset email sent',
+        );
+      } else if (response.statusCode == 404) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PasswordRecoveryResponse.error(
+          message: data['error'] ?? 'No account found with that email address.',
         );
       } else if (response.statusCode == 429) {
         // Rate limited

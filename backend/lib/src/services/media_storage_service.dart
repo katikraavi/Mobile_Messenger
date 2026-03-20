@@ -62,7 +62,7 @@ class MediaStorageService {
   final Connection connection;
   final String uploadDir;
   
-  static const int maxFileSize = 20971520; // 20MB in bytes
+  static const int maxFileSize = 52428800; // 50MB in bytes
   static const List<String> allowedMimeTypes = [
     'image/jpeg',
     'image/png',
@@ -71,6 +71,12 @@ class MediaStorageService {
     'video/mp4',
     'video/quicktime',
     'video/x-msvideo',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/aac',
+    'audio/x-m4a',
   ];
 
   MediaStorageService({
@@ -91,7 +97,7 @@ class MediaStorageService {
   /// Validate file before upload (T067)
   /// 
   /// Checks:
-  /// - File size <= 20MB
+  /// - File size <= 50MB
   /// - MIME type is allowed
   /// - File extension matches MIME type
   /// 
@@ -125,6 +131,12 @@ class MediaStorageService {
       'video/mp4': ['.mp4'],
       'video/quicktime': ['.mov'],
       'video/x-msvideo': ['.avi'],
+      'audio/wav': ['.wav'],
+      'audio/x-wav': ['.wav'],
+      'audio/mpeg': ['.mp3'],
+      'audio/mp4': ['.m4a', '.mp4'],
+      'audio/aac': ['.aac'],
+      'audio/x-m4a': ['.m4a'],
     };
 
     final allowed = validExtensions[mimeType] ?? [];

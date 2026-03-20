@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart' as provider;
+import 'package:frontend/core/notifications/app_feedback_service.dart';
+import 'package:frontend/core/services/app_exception_logger.dart';
 import '../models/user_profile.dart';
 import '../providers/user_profile_provider.dart';
 import '../widgets/profile_picture_widget.dart';
 import 'profile_edit_screen.dart';
 import '../../invitations/services/invite_api_service.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class ProfileViewScreen extends StatefulWidget {
   final String userId;
@@ -24,6 +28,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   late InviteApiService _inviteService;
   bool _isLoadingInvite = false;
   String? _inviteError;
+  bool _missingAuthProviderWarningShown = false;
 
   @override
   void initState() {
@@ -40,17 +45,19 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     try {
       await _inviteService.sendInvite(widget.userId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invitation sent!')),
-        );
+        AppFeedbackService.showInfo('Invitation sent.');
       }
     } catch (e) {
+      AppExceptionLogger.log(
+        e,
+        context: 'ProfileViewScreen._sendInvite',
+      );
       setState(() {
         _inviteError = e.toString();
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+        AppFeedbackService.showError(
+          'Could not send invitation. Messenger kept the current profile view.',
         );
       }
     } finally {
@@ -66,8 +73,10 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, _) {
-        // Watch the profile provider for the given userId
-        final profileAsync = ref.watch(userProfileProvider(widget.userId));
+        final token = _readTokenSafely(context);
+        final profileAsync = token == null
+            ? ref.watch(userProfileProvider(widget.userId))
+            : ref.watch(userProfileWithTokenProvider((widget.userId, token)));
 
         return profileAsync.when(
           loading: () => Scaffold(
@@ -76,10 +85,9 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
           ),
           error: (error, stackTrace) => Scaffold(
             appBar: AppBar(title: const Text('Profile')),
-            body: _buildErrorState(context, ref, error.toString()),
+            body: _buildErrorState(context, ref, error.toString(), token),
           ),
           data: (profile) {
-            print('[ProfileViewScreen] Profile loaded - Image URL: ${profile.profilePictureUrl}');
             return Scaffold(
               appBar: AppBar(
                 title: const Text('Profile'),
@@ -101,12 +109,35 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                 context,
                 ref,
                 profile,
+                token,
               ),
             );
           },
         );
       },
     );
+  }
+
+  String? _readTokenSafely(BuildContext context) {
+    final authProvider = provider.Provider.of<AuthProvider?>(
+      context,
+      listen: false,
+    );
+
+    if (authProvider == null && !_missingAuthProviderWarningShown) {
+      _missingAuthProviderWarningShown = true;
+      AppExceptionLogger.log(
+        StateError('AuthProvider not found in context'),
+        context: 'ProfileViewScreen._readTokenSafely',
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        AppFeedbackService.showWarning(
+          'Limited profile mode is active. Some authenticated profile actions are unavailable.',
+        );
+      });
+    }
+
+    return authProvider?.token;
   }
 
   /// Build loading skeleton with shimmer effect
@@ -172,11 +203,15 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   }
 
   /// Build error state with retry button
-  Widget _buildErrorState(BuildContext context, WidgetRef ref, String errorMsg) {
+  Widget _buildErrorState(
+    BuildContext context,
+    WidgetRef ref,
+    String errorMsg,
+    String? token,
+  ) {
     return RefreshIndicator(
       onRefresh: () async {
-        // ignore: unused_result
-        ref.refresh(userProfileProvider(widget.userId));
+        _refreshProfile(ref, token);
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -209,8 +244,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: () {
-                    // ignore: unused_result
-                    ref.refresh(userProfileProvider(widget.userId));
+                    _refreshProfile(ref, token);
                   },
                   icon: const Icon(Icons.refresh),
                   label: const Text('Try Again'),
@@ -228,12 +262,11 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     BuildContext context,
     WidgetRef ref,
     UserProfile profile,
+    String? token,
   ) {
     return RefreshIndicator(
       onRefresh: () async {
-        // Refresh profile via Riverpod
-        // ignore: unused_result
-        ref.refresh(userProfileProvider(widget.userId));
+        _refreshProfile(ref, token);
         // Wait a bit for the refresh to show
         await Future.delayed(const Duration(milliseconds: 500));
       },
@@ -318,7 +351,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => ProfileEditScreen(profile: profile!),
+                        builder: (_) => ProfileEditScreen(profile: profile),
                       ),
                     );
                   },
@@ -379,5 +412,16 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
         ),
       ),
     );
+  }
+
+  void _refreshProfile(WidgetRef ref, String? token) {
+    if (token == null) {
+      // ignore: unused_result
+      ref.refresh(userProfileProvider(widget.userId));
+      return;
+    }
+
+    // ignore: unused_result
+    ref.refresh(userProfileWithTokenProvider((widget.userId, token)));
   }
 }

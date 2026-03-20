@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/notifications/app_feedback_service.dart';
 import '../models/message_model.dart';
 import '../services/chat_api_service.dart';
 import '../services/message_encryption_service.dart';
 import '../services/message_websocket_service.dart';
-import './receive_messages_provider.dart';
 import './websocket_provider.dart';
 
 /// Messages provider (T044, T036-T037)
@@ -94,6 +94,9 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
       await loadMessagesFromServer();
     } catch (e) {
       print('[LocalMessagesNotifier] ❌ Error during initialization: $e');
+      AppFeedbackService.showWarning(
+        'Could not open the latest conversation state. Messenger kept the last stable view.',
+      );
     }
   }
 
@@ -216,8 +219,20 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
         }
         print('[LocalMessagesNotifier] ✅ Merged ${decryptedMessages.length} messages (${state.length} total)');
       }
+
+      // If the user is currently viewing this chat, ensure any unread incoming
+      // messages loaded from server are immediately marked as read.
+      if (_isViewerActive) {
+        print('[LocalMessagesNotifier] 👁️ Viewer active after load - marking unread messages as read');
+        await markAllUnreadAsRead();
+      }
     } catch (e) {
       print('[LocalMessagesNotifier] ❌ Error loading messages: $e');
+      AppFeedbackService.showWarning(
+        state.isEmpty
+            ? 'Could not load messages. Pull to retry.'
+            : 'Could not refresh messages. Showing the last synced conversation.',
+      );
       // Update state only if empty
       if (state.isEmpty) {
         state = [];
@@ -251,7 +266,7 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
         if (message.senderId != currentUserId && 
             !message.id.startsWith('temp_') && 
             !message.isSending && 
-            (message.status == 'sent' || message.status == null || message.status.isEmpty)) {
+            (message.status == 'sent' || message.status.isEmpty)) {
           _markMessageAsDelivered(message.id);
         }
       } else {
@@ -287,6 +302,20 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
     messages.sort((a, b) => a.createdAt.compareTo(b.createdAt)); // Oldest first
     state = messages;
     print('[LocalMessagesNotifier] ✓ Replaced optimistic message $tempId with ${serverMessage.id}');
+  }
+
+  void upsertMessage(Message message) {
+    final index = state.indexWhere((existing) => existing.id == message.id);
+    if (index >= 0) {
+      final updatedMessages = [...state];
+      updatedMessages[index] = message;
+      updatedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      state = updatedMessages;
+      print('[LocalMessagesNotifier] 🔄 Updated existing message: ${message.id}');
+      return;
+    }
+
+    addMessage(message);
   }
 
   /// Status hierarchy: sent (0) < delivered (1) < read (2)
@@ -347,9 +376,11 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
   }
 
   /// Cleanup resources
+  @override
   void dispose() {
     _webSocketSubscription?.cancel();
     print('[LocalMessagesNotifier] ✅ Disposed WebSocket subscription');
+    super.dispose();
   }
 }
 

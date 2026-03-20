@@ -75,5 +75,8 @@
 	<!-- Photo library add permission for saving photos -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>The app needs permission to save photos to your photo library.</string>
+	<!-- Microphone permission for audio messages -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The app needs access to your microphone to record audio messages.</string>
 </dict>
 </plist>

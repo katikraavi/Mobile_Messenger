@@ -53,6 +53,25 @@ final userProfileProvider = FutureProvider.family<UserProfile, String>(
   },
 );
 
+/// FutureProvider for fetching user profile with optional auth token.
+///
+/// Use this provider for authenticated screens to ensure private/own profile
+/// data (including latest profile picture) is fetched reliably.
+final userProfileWithTokenProvider =
+    FutureProvider.family<UserProfile, (String userId, String? token)>(
+  (ref, params) async {
+    final apiService = ref.watch(profileApiServiceProvider);
+
+    try {
+      final profile = await apiService.fetchProfile(params.$1, token: params.$2);
+      return profile;
+    } catch (e) {
+      print('[userProfileWithTokenProvider] Error fetching profile for ${params.$1}: $e');
+      rethrow;
+    }
+  },
+);
+
 /// Provider for profile picture URL (convenience accessor)
 /// 
 /// Usage:

@@ -37,11 +37,13 @@ class ProfileImageUploadWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authProvider = provider_pkg.Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
     final imageState = ref.watch(profileImageProvider);
     
     // Watch the updated profile to display newly uploaded image URL
     final userProfileAsync = userId != null 
-        ? ref.watch(userProfileProvider(userId!)) 
+      ? ref.watch(userProfileWithTokenProvider((userId!, token))) 
         : null;
 
     return Column(
@@ -123,9 +125,6 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                       ? null
                       : () async {
                     try {
-                      final authProvider = provider_pkg.Provider.of<AuthProvider>(context, listen: false);
-                      final token = authProvider.token;
-                      
                       await ref
                           .read(profileImageProvider.notifier)
                           .deleteImage(token: token);
@@ -135,7 +134,7 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                       if (context.mounted && deletedImageState.error == null && userId != null) {
                         // Mark form as dirty so SAVE button is enabled (image was deleted)
                         try {
-                          final profileAsync = ref.read(userProfileProvider(userId!));
+                          final profileAsync = ref.read(userProfileWithTokenProvider((userId!, token)));
                           if (profileAsync.hasValue) {
                             final userProfile = profileAsync.value!;
                             ref.read(profileFormStateProvider(userProfile).notifier).markImageChanged();
@@ -146,7 +145,7 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                         }
                         
                         // Refresh the userProfileProvider to update profile after delete
-                        await ref.refresh(userProfileProvider(userId!));
+                        await ref.refresh(userProfileWithTokenProvider((userId!, token)));
                         
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -276,9 +275,6 @@ class ProfileImageUploadWidget extends ConsumerWidget {
             icon: const Icon(Icons.cloud_upload),
             label: const Text('Upload'),
             onPressed: () async {
-              final authProvider = provider_pkg.Provider.of<AuthProvider>(context, listen: false);
-              final token = authProvider.token;
-              
               await ref.read(profileImageProvider.notifier).uploadImage(token: token);
               
               // Check updated state after upload completes
@@ -289,7 +285,7 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                 // Mark form as dirty so SAVE button is enabled (image has changed)
                 // Fetch the current user profile to access the form state notifier
                 try {
-                  final profileAsync = ref.read(userProfileProvider(userId!));
+                  final profileAsync = ref.read(userProfileWithTokenProvider((userId!, token)));
                   if (profileAsync.hasValue) {
                     final userProfile = profileAsync.value!;
                     ref.read(profileFormStateProvider(userProfile).notifier).markImageChanged();
@@ -300,7 +296,7 @@ class ProfileImageUploadWidget extends ConsumerWidget {
                 }
                 
                 // Refresh the userProfileProvider to update profile with new image URL
-                await ref.refresh(userProfileProvider(userId!));
+                await ref.refresh(userProfileWithTokenProvider((userId!, token)));
                 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

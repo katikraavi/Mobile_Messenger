@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:shelf/shelf.dart';
 import '../services/email_service.dart';
 import '../services/rate_limit_service.dart';
@@ -60,36 +61,32 @@ Future<Response> sendVerificationEmail(
 
     // Generate token and send email
     final token = await verificationService.createVerificationToken(userId);
+    final appBaseUrl = Platform.environment['APP_BASE_URL'] ?? 'http://localhost:8081';
     
     // Build verification email
     final emailMessage = emailService.buildVerificationEmail(
       recipientEmail: email,
       recipientName: email.split('@')[0],
-      verificationLink: 'https://app.messenger.com/verify?token=$token',
+      verificationLink: '$appBaseUrl/auth/verify-email/confirm?token=$token',
       expiresIn: '24 hours',
     );
 
-    // Send email
-    try {
-      await emailService.sendEmail(emailMessage);
-    } catch (emailError) {
-      print('[WARNING] Email send failed: $emailError');
-      // Continue - in dev mode, token is logged to console
-    }
+    // Send email and fail the request if SMTP delivery fails.
+    await emailService.sendEmail(emailMessage);
 
-    // Development mode: Include token in response for manual verification
-    // In production, only return success message
     final bool isDevelopment = !bool.fromEnvironment('dart.vm.product');
+    final successMessage = emailService.isUsingMailhog
+        ? 'Verification email captured in MailHog at http://localhost:8025.'
+        : 'Verification email accepted by SMTP. If it does not arrive, check spam and verify SMTP sender configuration.';
+
     final responseBody = {
       'success': true,
-      'message': isDevelopment 
-        ? 'Development: Email logged to console. Token: $token'
-        : 'Verification email sent. Check your inbox.',
+      'message': successMessage,
     };
     
     if (isDevelopment) {
       responseBody['token'] = token;
-      responseBody['verificationLink'] = 'https://app.messenger.com/verify?token=$token';
+      responseBody['verificationLink'] = '$appBaseUrl/auth/verify-email/confirm?token=$token';
     }
 
     return Response.ok(

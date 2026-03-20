@@ -69,7 +69,17 @@ class AuthService {
         throw AuthException(data['error'] as String? ?? 'User already exists', code: 'user_exists');
       } else {
         _log('[Frontend Register] Server error: status=${response.statusCode}, body=${response.body}');
-        throw AuthException('Server error - please try again later', code: 'server_error');
+        String errorMessage = 'Server error - please try again later';
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final dynamic backendError = data['error'];
+          if (backendError is String && backendError.trim().isNotEmpty) {
+            errorMessage = backendError;
+          }
+        } catch (_) {
+          // Keep fallback error message when response body is not JSON.
+        }
+        throw AuthException(errorMessage, code: 'server_error');
       }
     } on AuthException {
       rethrow;
@@ -107,6 +117,18 @@ class AuthService {
         throw AuthException(data['error'] as String? ?? 'Validation failed', code: 'validation_error');
       } else if (response.statusCode == 401) {
         throw AuthException('Invalid email or password', code: 'invalid_credentials');
+      } else if (response.statusCode == 403) {
+        String message = 'Email not verified. Please verify your email before logging in.';
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final backendError = data['error'];
+          if (backendError is String && backendError.trim().isNotEmpty) {
+            message = backendError;
+          }
+        } catch (_) {
+          // Keep default message when response body is not JSON.
+        }
+        throw AuthException(message, code: 'email_not_verified');
       } else if (response.statusCode == 409) {
         throw AuthException('User already exists', code: 'user_exists');
       } else if (response.statusCode == 429) {

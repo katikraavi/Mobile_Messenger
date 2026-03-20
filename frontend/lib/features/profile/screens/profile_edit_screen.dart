@@ -436,7 +436,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         // Refresh profile data to show updated information
         // This will fetch fresh data from the backend, including any newly uploaded image
         try {
-          final refreshedProfile = await ref.refresh(userProfileProvider(widget.profile.userId).future);
+          final refreshedProfile = await ref.refresh(
+            userProfileWithTokenProvider((widget.profile.userId, token)).future,
+          );
           print('[ProfileEditScreen] Profile refreshed successfully. Image URL: ${refreshedProfile.profilePictureUrl}');
         } catch (e) {
           print('[ProfileEditScreen] Error refreshing profile after save: $e');

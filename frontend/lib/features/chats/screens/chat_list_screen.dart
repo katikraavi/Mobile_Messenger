@@ -9,6 +9,7 @@ import '../providers/chats_provider.dart';
 import '../services/chat_api_service.dart';
 import '../widgets/chat_list_tile_consumer.dart';
 import '../widgets/archived_chats_section.dart';
+import '../providers/archived_chats_provider.dart';
 import 'chat_detail_screen.dart';
 import '../../auth/providers/auth_provider.dart' as auth;
 
@@ -45,10 +46,15 @@ class ChatListScreen extends ConsumerWidget {
     print('[ChatListScreen] 📡 Watching activeChatListProvider for token: ${token.substring(0, 20)}...');
     final activeChatsStream = ref.watch(activeChatListProvider(token));
 
+    const baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8081');
+    final chatApiService = ChatApiService(baseUrl: baseUrl);
+
     return RefreshIndicator(
       onRefresh: () async {
         // Refresh chats from backend
-        return ref.refresh(activeChatListProvider(token));
+        ref.invalidate(chatsProvider(token));
+        ref.invalidate(activeChatListProvider(token));
+        ref.invalidate(archivedChatsProvider(token));
       },
       child: activeChatsStream.when(
         // Loading state
@@ -86,44 +92,69 @@ class ChatListScreen extends ConsumerWidget {
 
         // Success state
         data: (chats) {
-          // Empty state
-          if (chats.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No chats yet',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Send an invitation to start messaging',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
+          return ListView(
+            children: [
+              ArchivedChatsSection(
+                token: token,
+                currentUserId: currentUserId,
+              ),
+              if (chats.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 120),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No active chats',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Archived chats stay in the archive section',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            );
-          }
-
-          // Active chats list
-          return ListView.builder(
-            itemCount: chats.length,
-            itemBuilder: (context, index) {
-              final chat = chats[index];
-              final otherUserId = chat.getOtherId(currentUserId);
-              return ChatListTileConsumer(
-                chat: chat,
-                otherUserId: otherUserId,
-                currentUserId: currentUserId,
-                token: token,
-                lastMessage: chat.lastMessagePreview,
-              );
-            },
+                )
+              else
+                ...chats.map((chat) {
+                  final otherUserId = chat.getOtherId(currentUserId);
+                  return ChatListTileConsumer(
+                    chat: chat,
+                    otherUserId: otherUserId,
+                    currentUserId: currentUserId,
+                    token: token,
+                    lastMessage: chat.lastMessagePreview,
+                    onArchive: () async {
+                      try {
+                        await chatApiService.archiveChat(token: token, chatId: chat.id);
+                        ref.invalidate(chatsProvider(token));
+                        ref.invalidate(activeChatListProvider(token));
+                        ref.invalidate(archivedChatsProvider(token));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Archived selected chat')),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to archive chat: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  );
+                }),
+            ],
           );
         },
       ),

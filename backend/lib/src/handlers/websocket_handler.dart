@@ -59,6 +59,7 @@ class WebSocketHandler {
       }
 
       print('[WebSocket] ✓ WebSocket connected for user: $userId');
+      _webSocketService.addUserConnection(userId, webSocket);
 
       // Handle incoming messages in background
       webSocket.stream.listen(
@@ -68,6 +69,9 @@ class WebSocketHandler {
         },
         onDone: () {
           print('[WebSocket] ✓ Connection closed for user: $userId');
+          if (userId != null) {
+            _webSocketService.removeUserConnection(userId, webSocket);
+          }
         },
       );
     } catch (e) {

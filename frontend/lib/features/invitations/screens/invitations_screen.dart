@@ -8,6 +8,7 @@ import '../providers/network_provider.dart';
 import '../services/invite_error_handler.dart';
 import '../services/resilient_http_client.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../chats/widgets/user_avatar_widget.dart';
 import 'send_invite_picker_screen.dart';
 
 /// Main invitations screen - shows all invitations (pending and sent) in a single unified view
@@ -182,6 +183,12 @@ class _UnifiedInvitationsList extends ConsumerWidget {
                     acceptMutation.isLoading ||
                     declineMutation.isLoading ||
                     cancelMutation.isLoading;
+                final avatarUrl = isIncoming
+                  ? invite.senderAvatarUrl
+                  : invite.recipientAvatarUrl;
+                final avatarName = isIncoming
+                  ? invite.senderName
+                  : (invite.recipientName ?? 'Unknown');
 
                 return Card(
                   margin: const EdgeInsets.symmetric(
@@ -195,29 +202,10 @@ class _UnifiedInvitationsList extends ConsumerWidget {
                         Row(
                           children: [
                             // Avatar
-                            CircleAvatar(
+                            UserAvatarWidget(
+                              imageUrl: avatarUrl,
                               radius: 24,
-                              backgroundImage: isIncoming
-                                  ? (invite.senderAvatarUrl != null
-                                        ? NetworkImage(invite.senderAvatarUrl!)
-                                        : null)
-                                  : (invite.recipientAvatarUrl != null
-                                        ? NetworkImage(
-                                            invite.recipientAvatarUrl!,
-                                          )
-                                        : null),
-                              child:
-                                  (isIncoming
-                                          ? invite.senderAvatarUrl
-                                          : invite.recipientAvatarUrl) ==
-                                      null
-                                  ? Text(
-                                      isIncoming
-                                          ? invite.senderName.substring(0, 1)
-                                          : (invite.recipientName ?? 'U')
-                                                .substring(0, 1),
-                                    )
-                                  : null,
+                              username: avatarName,
                             ),
                             const SizedBox(width: 12),
                             // Name and status

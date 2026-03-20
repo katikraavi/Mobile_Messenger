@@ -11,8 +11,10 @@ import 'src/services/rate_limit_service.dart';
 import 'src/services/migration_runner.dart';
 import 'src/services/jwt_service.dart';
 import 'src/services/auth_exception.dart';
+import 'src/services/password_reset_service.dart';
 import 'src/services/chat_service.dart';
 import 'src/services/encryption_service.dart';
+import 'src/services/notification_service.dart';
 import 'src/services/service_config.dart';
 import 'src/endpoints/verification_handler.dart';
 import 'src/endpoints/password_reset_handler.dart';
@@ -24,6 +26,7 @@ import 'src/handlers/chat_handlers.dart';
 import 'src/handlers/message_handlers.dart';
 import 'src/handlers/media_handlers.dart';
 import 'src/handlers/websocket_handler.dart';
+import 'src/services/websocket_service.dart';
 
 // Alias for cleaner code
 typedef Connection = PostgreSQLConnection;
@@ -86,7 +89,14 @@ void main() async {
   } else {
     print('[INFO] Email: No SMTP configured — tokens returned in API response (dev mode)');
   }
+  for (final warning in emailService.getConfigurationWarnings()) {
+    print('[WARNING] Email configuration: $warning');
+  }
   final verificationService = VerificationService(
+    connection: dbConnection,
+    tokenService: tokenService,
+  );
+  final passwordResetService = PasswordResetService(
     connection: dbConnection,
     tokenService: tokenService,
   );
@@ -110,6 +120,7 @@ void main() async {
 
   // Initialize service config for handlers to access services
   ServiceConfig.initialize(encryptionService);
+  MediaHandlers.initialize(dbConnection);
 
   print('[INFO] Services initialized');
 
@@ -128,6 +139,7 @@ void main() async {
         dbConnection,
         encryptionService,
         verificationService,
+        passwordResetService,
       ));
 
   final server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
@@ -153,6 +165,7 @@ Handler _createHandler(
   Connection database,
   EncryptionService encryptionService,
   VerificationService verificationService,
+  PasswordResetService passwordResetService,
 ) {
   return (Request request) async {
     try {
@@ -176,7 +189,7 @@ Handler _createHandler(
 
       // Static file serving for /uploads directory
       if (path.startsWith('uploads/')) {
-        return _serveStaticFile(path);
+        return _serveStaticFile(request, path);
       }
 
       // Health check endpoint (public)
@@ -192,6 +205,101 @@ Handler _createHandler(
         return Response.ok(
           jsonEncode({'status': 'Schema tables created via migrations: users, chats, chat_members, messages, invites, verification_token, password_reset_token, password_reset_attempt'}),
           headers: {'Content-Type': 'application/json'},
+        );
+      }
+
+      // Password reset landing page (public)
+      // Opened from emails: /reset?token=...
+      if (path == 'reset' && method == 'GET') {
+        final token = request.url.queryParameters['token'] ?? '';
+        if (token.isEmpty) {
+          return Response.badRequest(
+            body: 'Missing token',
+            headers: {'Content-Type': 'text/plain; charset=utf-8'},
+          );
+        }
+
+        final html = '''
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reset Password</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; }
+    .card { max-width: 420px; margin: 48px auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 24px; }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    p { color: #475569; margin: 0 0 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 12px; }
+    button { width: 100%; padding: 11px 12px; background: #2563eb; color: #fff; border: 0; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.7; cursor: not-allowed; }
+    .msg { margin-top: 14px; font-size: 14px; }
+    .err { color: #b91c1c; }
+    .ok { color: #166534; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Reset your password</h1>
+    <p>Enter your new password below.</p>
+    <label for="pw">New password</label>
+    <input id="pw" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+    <label for="cpw">Confirm password</label>
+    <input id="cpw" type="password" autocomplete="new-password" placeholder="Repeat password" />
+    <button id="submit">Update Password</button>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <script>
+    const token = ${jsonEncode(token)};
+    const submit = document.getElementById('submit');
+    const msg = document.getElementById('msg');
+    const pw = document.getElementById('pw');
+    const cpw = document.getElementById('cpw');
+
+    function show(text, ok) {
+      msg.textContent = text;
+      msg.className = 'msg ' + (ok ? 'ok' : 'err');
+    }
+
+    submit.addEventListener('click', async () => {
+      if (!pw.value) return show('Please enter a new password.', false);
+      if (pw.value !== cpw.value) return show('Passwords do not match.', false);
+
+      submit.disabled = true;
+      show('Updating password...', true);
+
+      try {
+        const res = await fetch('/auth/password-reset/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, newPassword: pw.value }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          show(data.message || 'Password reset successfully. You can now log in.', true);
+          pw.value = '';
+          cpw.value = '';
+        } else {
+          show(data.error || 'Failed to reset password.', false);
+        }
+      } catch (_) {
+        show('Network error while resetting password.', false);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+''';
+
+        return Response.ok(
+          html,
+          headers: {'Content-Type': 'text/html; charset=utf-8'},
         );
       }
 
@@ -239,18 +347,16 @@ Handler _createHandler(
       if (path == 'auth/password-reset/request' && method == 'POST') {
         return await requestPasswordReset(
           request,
-          tokenService,
           emailService,
           rateLimitService,
-          null, // PasswordResetService - deferred
+          passwordResetService,
         );
       }
 
       if (path == 'auth/password-reset/confirm' && method == 'POST') {
         return await confirmPasswordReset(
           request,
-          tokenService,
-          null, // PasswordResetService - deferred
+          passwordResetService,
         );
       }
 
@@ -617,6 +723,25 @@ Handler _createHandler(
           );
 
           print('[InviteHandler] ✅ Invite created: $inviteId');
+
+          final notificationService = NotificationService(database);
+          await notificationService.notifyInvite(
+            recipientUserId: recipientId,
+            senderName: senderUsername,
+            inviteId: inviteId,
+          );
+
+          WebSocketService().notifyUser(
+            recipientId,
+            WebSocketEvent(
+              type: WebSocketEventType.invitationSent,
+              data: {
+                'inviteId': inviteId,
+                'senderId': senderId,
+                'senderName': senderUsername,
+              },
+            ),
+          );
 
           // Fetch recipient info for response
           final recipientInfoResult = await database.query(
@@ -1243,6 +1368,161 @@ Handler _createHandler(
         }
       }
 
+      // POST /api/notifications/device-token - Register current device for notifications.
+      if (path == 'api/notifications/device-token' && method == 'POST') {
+        try {
+          final authHeader = request.headers['authorization'];
+          if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+            return Response(401,
+              body: jsonEncode({'error': 'Missing or invalid authorization header'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final token = authHeader.substring('Bearer '.length);
+          final payload = JwtService.validateToken(token);
+          final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+          final deviceToken = body['token'] as String?;
+          final platform = body['platform'] as String?;
+
+          if (deviceToken == null || deviceToken.isEmpty) {
+            return Response(400,
+              body: jsonEncode({'error': 'token is required'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final notificationService = NotificationService(database);
+          await notificationService.upsertDeviceToken(
+            userId: payload.userId,
+            token: deviceToken,
+            platform: platform,
+          );
+
+          return Response(204);
+        } on AuthException {
+          return Response(401,
+            body: jsonEncode({'error': 'Invalid token'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } catch (e) {
+          return Response(500,
+            body: jsonEncode({'error': 'Failed to register device token: $e'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+      }
+
+      // GET /api/notifications/muted-chats - Fetch all muted chat ids for current user.
+      if (path == 'api/notifications/muted-chats' && method == 'GET') {
+        try {
+          final authHeader = request.headers['authorization'];
+          if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+            return Response(401,
+              body: jsonEncode({'error': 'Missing or invalid authorization header'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final token = authHeader.substring('Bearer '.length);
+          final payload = JwtService.validateToken(token);
+          final chatService = ChatService(database);
+          final mutedChatIds = await chatService.getMutedChatIds(payload.userId);
+
+          return Response.ok(
+            jsonEncode({'chat_ids': mutedChatIds}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } on AuthException {
+          return Response(401,
+            body: jsonEncode({'error': 'Invalid token'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } catch (e) {
+          return Response(500,
+            body: jsonEncode({'error': 'Failed to fetch muted chats: $e'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+      }
+
+      // GET /api/chats/{chatId}/notification-settings - Fetch per-chat notification preferences.
+      if (path.startsWith('api/chats/') && path.endsWith('/notification-settings') && method == 'GET') {
+        try {
+          final authHeader = request.headers['authorization'];
+          if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+            return Response(401,
+              body: jsonEncode({'error': 'Missing or invalid authorization header'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final token = authHeader.substring('Bearer '.length);
+          final payload = JwtService.validateToken(token);
+          final chatId = path.replaceFirst('api/chats/', '').replaceFirst('/notification-settings', '');
+          final chatService = ChatService(database);
+          final isMuted = await chatService.isChatMuted(chatId, payload.userId);
+
+          return Response.ok(
+            jsonEncode({'chat_id': chatId, 'is_muted': isMuted}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } on AuthException {
+          return Response(401,
+            body: jsonEncode({'error': 'Invalid token'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } catch (e) {
+          return Response(500,
+            body: jsonEncode({'error': 'Failed to fetch notification settings: $e'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+      }
+
+      // PUT /api/chats/{chatId}/notification-settings - Update per-chat notification preferences.
+      if (path.startsWith('api/chats/') && path.endsWith('/notification-settings') && method == 'PUT') {
+        try {
+          final authHeader = request.headers['authorization'];
+          if (authHeader == null || !authHeader.startsWith('Bearer ')) {
+            return Response(401,
+              body: jsonEncode({'error': 'Missing or invalid authorization header'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final token = authHeader.substring('Bearer '.length);
+          final payload = JwtService.validateToken(token);
+          final body = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+          final isMuted = body['is_muted'] as bool?;
+          if (isMuted == null) {
+            return Response(400,
+              body: jsonEncode({'error': 'is_muted is required'}),
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+
+          final chatId = path.replaceFirst('api/chats/', '').replaceFirst('/notification-settings', '');
+          final chatService = ChatService(database);
+          final updated = await chatService.setChatMuted(chatId, payload.userId, isMuted);
+
+          return Response.ok(
+            jsonEncode({'chat_id': chatId, 'is_muted': updated}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } on AuthException {
+          return Response(401,
+            body: jsonEncode({'error': 'Invalid token'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        } catch (e) {
+          return Response(500,
+            body: jsonEncode({'error': 'Failed to update notification settings: $e'}),
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+      }
+
       // PUT /api/chats/{chatId}/archive - Archive a chat for current user
       if (path.startsWith('api/chats/') && path.endsWith('/archive') && method == 'PUT') {
         try {
@@ -1479,20 +1759,18 @@ Future<Response> _handleRegister(
         registeredAt: DateTime.now().toUtc().toString().substring(0, 19).replaceAll('T', ' ') + ' UTC',
       );
       devToken = token; // kept for dev response
-      // Dispatch email in background so registration response is never blocked by SMTP latency.
-      unawaited(
-        emailService
-            .sendEmail(emailMsg)
-            .then((_) {
-              print('[Register] Verification email dispatched to $email');
-            })
-            .catchError((err) {
-              print('[Register][WARNING] Async verification email failed: $err');
-            }),
-      );
+      await emailService.sendEmail(emailMsg);
+      print('[Register] Verification email dispatched to $email');
     } catch (emailErr) {
-      // Never fail registration because of email
       print('[Register][WARNING] Could not send verification email: $emailErr');
+      return Response(
+        502,
+        body: jsonEncode({
+          'error':
+              'Account created, but verification email failed to send. Check SMTP sender configuration and retry.',
+        }),
+        headers: {'Content-Type': 'application/json'},
+      );
     }
 
     final bool isDev = !bool.fromEnvironment('dart.vm.product');
@@ -1544,7 +1822,7 @@ Future<Response> _handleLogin(Request request, Connection database) async {
 
     // Query database for user by email
     final result = await database.query(
-      'SELECT id, email, username, password_hash FROM "users" WHERE email = @email',
+      'SELECT id, email, username, password_hash, email_verified FROM "users" WHERE email = @email',
       substitutionValues: {'email': email},
     );
 
@@ -1562,6 +1840,14 @@ Future<Response> _handleLogin(Request request, Connection database) async {
     if (!_verifyPassword(password!, storedHash)) {
       return Response(401,
         body: jsonEncode({'error': 'Invalid email or password'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    final emailVerified = user['email_verified'] as bool? ?? false;
+    if (!emailVerified) {
+      return Response(403,
+        body: jsonEncode({'error': 'Email not verified. Please verify your email before logging in.'}),
         headers: {'Content-Type': 'application/json'},
       );
     }
@@ -1604,6 +1890,28 @@ Future<Response> _handleValidateSession(Request request, Connection database) as
     try {
       final token = authHeader.substring('Bearer '.length);
       final payload = JwtService.validateToken(token);
+
+      final result = await database.query(
+        'SELECT email_verified FROM "users" WHERE id = @id',
+        substitutionValues: {'id': payload.userId},
+      );
+
+      if (result.isEmpty) {
+        return Response(401,
+          body: jsonEncode({'error': 'Invalid token'}),
+          headers: {'Content-Type': 'application/json'},
+        );
+      }
+
+      final userRow = result.first.toColumnMap();
+      final emailVerified = userRow['email_verified'] as bool? ?? false;
+      if (!emailVerified) {
+        return Response(401,
+          body: jsonEncode({'error': 'Email not verified'}),
+          headers: {'Content-Type': 'application/json'},
+        );
+      }
+
       return Response.ok(
         jsonEncode({
           'is_authenticated': true,
@@ -1891,7 +2199,7 @@ bool _verifyPassword(String password, String hash) {
 }
 
 /// Serve static files from the uploads directory
-Response _serveStaticFile(String path) {
+Response _serveStaticFile(Request request, String path) {
   try {
     // Security: prevent directory traversal attacks
     if (path.contains('..') || path.startsWith('/')) {
@@ -1935,8 +2243,8 @@ Response _serveStaticFile(String path) {
       );
     }
 
-    // Read file bytes
-    final bytes = file.readAsBytesSync();
+    final stat = file.statSync();
+    final totalLength = stat.size;
     
     // Determine content type based on file extension
     final ext = path.split('.').last.toLowerCase();
@@ -1956,18 +2264,126 @@ Response _serveStaticFile(String path) {
       case 'webp':
         contentType = 'image/webp';
         break;
+      case 'mp4':
+        contentType = 'video/mp4';
+        break;
+      case 'mov':
+        contentType = 'video/quicktime';
+        break;
+      case 'avi':
+        contentType = 'video/x-msvideo';
+        break;
+      case 'wav':
+        contentType = 'audio/wav';
+        break;
+      case 'mp3':
+        contentType = 'audio/mpeg';
+        break;
+      case 'm4a':
+        contentType = 'audio/x-m4a';
+        break;
+      case 'aac':
+        contentType = 'audio/aac';
+        break;
       default:
         contentType = 'application/octet-stream';
     }
+
+    final rangeHeader = request.headers['range'];
+    final commonHeaders = {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000',
+      'Accept-Ranges': 'bytes',
+    };
+
+    if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
+      final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(rangeHeader);
+      if (match == null) {
+        return Response(
+          416,
+          headers: {
+            ...commonHeaders,
+            'Content-Range': 'bytes */$totalLength',
+          },
+        );
+      }
+
+      final startGroup = match.group(1);
+      final endGroup = match.group(2);
+
+      int start;
+      int end;
+
+      if ((startGroup == null || startGroup.isEmpty) &&
+          (endGroup == null || endGroup.isEmpty)) {
+        return Response(
+          416,
+          headers: {
+            ...commonHeaders,
+            'Content-Range': 'bytes */$totalLength',
+          },
+        );
+      }
+
+      if (startGroup == null || startGroup.isEmpty) {
+        final suffixLength = int.parse(endGroup!);
+        start = (totalLength - suffixLength).clamp(0, totalLength - 1);
+        end = totalLength - 1;
+      } else {
+        start = int.parse(startGroup);
+        end = endGroup == null || endGroup.isEmpty
+            ? totalLength - 1
+            : int.parse(endGroup);
+      }
+
+      if (start < 0 || start >= totalLength || end < start) {
+        return Response(
+          416,
+          headers: {
+            ...commonHeaders,
+            'Content-Range': 'bytes */$totalLength',
+          },
+        );
+      }
+
+      if (end >= totalLength) {
+        end = totalLength - 1;
+      }
+
+      final stream = file.openRead(start, end + 1);
+      final chunkLength = end - start + 1;
+
+      print('[✓] Serving range: $path ($start-$end/$totalLength)');
+
+      return Response(
+        206,
+        body: stream,
+        headers: {
+          ...commonHeaders,
+          'Content-Length': '$chunkLength',
+          'Content-Range': 'bytes $start-$end/$totalLength',
+        },
+      );
+    }
+
+    if (request.method == 'HEAD') {
+      return Response.ok(
+        null,
+        headers: {
+          ...commonHeaders,
+          'Content-Length': '$totalLength',
+        },
+      );
+    }
+
+    // Read file bytes
+    final bytes = file.readAsBytesSync();
     
     print('[✓] Serving: $path (${bytes.length} bytes)');
     
     return Response.ok(
       bytes,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000', // Cache for 1 year
-      },
+      headers: commonHeaders,
     );
   } catch (e) {
     print('[StaticFileServer] Error serving file: $e');
@@ -1997,32 +2413,51 @@ Future<void> _seedTestUsers(PostgreSQLConnection database) async {
     ];
 
     int created = 0;
+    int updated = 0;
     for (final user in testUsers) {
       final username = user['username'] as String;
       final email = user['email'] as String;
       final password = user['password'] as String;
+      final normalizedEmail = email.toLowerCase();
+      final passwordHash = _hashPassword(password);
 
       // Check if user already exists
       final existing = await database.query(
         'SELECT id FROM "users" WHERE email = @email OR username = @username',
-        substitutionValues: {'email': email.toLowerCase(), 'username': username},
+        substitutionValues: {'email': normalizedEmail, 'username': username},
       );
 
       if (existing.isNotEmpty) {
-        print('[TestUsers] ⊘ @$username already exists');
+        final userId = existing.first[0] as String;
+        await database.execute(
+          '''UPDATE "users"
+             SET email = @email,
+                 username = @username,
+                 password_hash = @password_hash,
+                 email_verified = @email_verified
+             WHERE id = @id''',
+          substitutionValues: {
+            'id': userId,
+            'email': normalizedEmail,
+            'username': username,
+            'password_hash': passwordHash,
+            'email_verified': true,
+          },
+        );
+        print('[TestUsers] ↻ Synced @$username ($email)');
+        updated++;
         continue;
       }
 
       try {
         final userId = const Uuid().v4();
-        final passwordHash = _hashPassword(password);
 
         await database.execute(
           '''INSERT INTO "users" (id, email, username, password_hash, email_verified, created_at)
              VALUES (@id, @email, @username, @password_hash, @email_verified, @created_at)''',
           substitutionValues: {
             'id': userId,
-            'email': email.toLowerCase(),
+            'email': normalizedEmail,
             'username': username,
             'password_hash': passwordHash,
             'email_verified': true,
@@ -2038,7 +2473,11 @@ Future<void> _seedTestUsers(PostgreSQLConnection database) async {
 
     if (created > 0) {
       print('[TestUsers] Created $created test users');
-    } else {
+    }
+    if (updated > 0) {
+      print('[TestUsers] Synced $updated existing test users');
+    }
+    if (created == 0 && updated == 0) {
       print('[TestUsers] All test users already exist');
     }
   } catch (e) {

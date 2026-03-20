@@ -250,6 +250,8 @@ class ChatApiService {
     required String token,
     required String chatId,
     required String encryptedContent,
+    String? mediaUrl,
+    String? mediaType,
     String? idempotencyKey,
   }) async {
     try {
@@ -258,6 +260,11 @@ class ChatApiService {
       final body = {
         'encrypted_content': encryptedContent,
       };
+
+      if (mediaUrl != null && mediaType != null) {
+        body['media_url'] = mediaUrl;
+        body['media_type'] = mediaType;
+      }
 
       if (idempotencyKey != null) {
         body['idempotency_key'] = idempotencyKey;

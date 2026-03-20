@@ -55,6 +55,14 @@ class Message {
   @JsonKey(name: 'is_deleted')
   final bool isDeleted;
 
+  /// Relative or absolute URL to attached media
+  @JsonKey(name: 'media_url')
+  final String? mediaUrl;
+
+  /// MIME type for attached media
+  @JsonKey(name: 'media_type')
+  final String? mediaType;
+
   /// Decrypted plaintext (in-memory only, never persisted)
   /// This is populated after decryption by the service layer
   @JsonKey(ignore: true)
@@ -71,6 +79,8 @@ class Message {
     this.editedAt,
     this.deletedAt,
     this.isDeleted = false,
+    this.mediaUrl,
+    this.mediaType,
     this.decryptedContent,
   });
 
@@ -84,11 +94,13 @@ class Message {
       chatId: row[1] as String,
       senderId: row[2] as String,
       encryptedContent: row[3] as String,
-      status: row[6] as String? ?? 'sent',
-      createdAt: row[7] as DateTime,
-      editedAt: row[8] != null ? row[8] as DateTime : null,
-      isDeleted: row.length > 10 && row[10] != null ? row[10] as bool : false,
+      status: row.length > 6 ? row[6] as String? ?? 'sent' : 'sent',
+      createdAt: row.length > 7 ? row[7] as DateTime : row[4] as DateTime,
+      editedAt: row.length > 8 && row[8] != null ? row[8] as DateTime : null,
       deletedAt: row.length > 9 && row[9] != null ? row[9] as DateTime : null,
+      isDeleted: row.length > 10 && row[10] != null ? row[10] as bool : false,
+      mediaUrl: row.length > 11 ? row[11] as String? : null,
+      mediaType: row.length > 12 ? row[12] as String? : null,
     );
   }
   
@@ -119,7 +131,7 @@ class Message {
   @override
   String toString() => 'Message(id: $id, chatId: $chatId, sender: $senderId, '
       'recipient: $recipientId, status: $status, encrypted: ${encryptedContent.length} chars, '
-      'created: ${createdAt.toIso8601String()}, deleted: $isDeleted)';
+      'created: ${createdAt.toIso8601String()}, deleted: $isDeleted, media: $mediaType)';
 
   @override
   bool operator ==(Object other) =>
@@ -135,7 +147,9 @@ class Message {
           createdAt == other.createdAt &&
           editedAt == other.editedAt &&
           deletedAt == other.deletedAt &&
-          isDeleted == other.isDeleted;
+          isDeleted == other.isDeleted &&
+          mediaUrl == other.mediaUrl &&
+          mediaType == other.mediaType;
 
   @override
   int get hashCode =>
@@ -148,5 +162,7 @@ class Message {
       createdAt.hashCode ^
       editedAt.hashCode ^
       deletedAt.hashCode ^
-      isDeleted.hashCode;
+      isDeleted.hashCode ^
+      mediaUrl.hashCode ^
+      mediaType.hashCode;
 }

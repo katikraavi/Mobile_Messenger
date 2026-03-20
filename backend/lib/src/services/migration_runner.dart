@@ -499,7 +499,7 @@ class MigrationRunner {
             
             CONSTRAINT fk_media_uploader FOREIGN KEY (uploader_id) 
               REFERENCES users(id) ON DELETE CASCADE,
-            CONSTRAINT valid_file_size CHECK (file_size_bytes > 0 AND file_size_bytes <= 20971520)
+            CONSTRAINT valid_file_size CHECK (file_size_bytes > 0 AND file_size_bytes <= 52428800)
           );
           
           CREATE INDEX IF NOT EXISTS idx_media_uploader_created 
@@ -510,6 +510,80 @@ class MigrationRunner {
         ''',
         downSql: '''
           DROP TABLE IF EXISTS media_storage CASCADE;
+        ''',
+      ),
+      Migration(
+        version: 19,
+        description: '010-media-messaging: Add media_url and media_type columns back to messages table',
+        upSql: '''
+          ALTER TABLE messages
+          ADD COLUMN IF NOT EXISTS media_url TEXT,
+          ADD COLUMN IF NOT EXISTS media_type TEXT;
+
+          ALTER TABLE messages
+          DROP CONSTRAINT IF EXISTS messages_media_consistency_check;
+
+          ALTER TABLE messages
+          ADD CONSTRAINT messages_media_consistency_check
+          CHECK (media_url IS NULL OR media_type IS NOT NULL);
+        ''',
+        downSql: '''
+          ALTER TABLE messages
+          DROP CONSTRAINT IF EXISTS messages_media_consistency_check,
+          DROP COLUMN IF EXISTS media_url,
+          DROP COLUMN IF EXISTS media_type;
+        ''',
+      ),
+      Migration(
+        version: 20,
+        description: '010-media-messaging: Raise media_storage size limit to 50MB',
+        upSql: '''
+          ALTER TABLE media_storage
+          DROP CONSTRAINT IF EXISTS valid_file_size;
+
+          ALTER TABLE media_storage
+          ADD CONSTRAINT valid_file_size
+          CHECK (file_size_bytes > 0 AND file_size_bytes <= 52428800);
+        ''',
+        downSql: '''
+          ALTER TABLE media_storage
+          DROP CONSTRAINT IF EXISTS valid_file_size;
+
+          ALTER TABLE media_storage
+          ADD CONSTRAINT valid_file_size
+          CHECK (file_size_bytes > 0 AND file_size_bytes <= 20971520);
+        ''',
+      ),
+      Migration(
+        version: 21,
+        description: 'Add notification device tokens and per-chat mute preferences',
+        upSql: '''
+          CREATE TABLE IF NOT EXISTS push_device_tokens (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_token TEXT NOT NULL UNIQUE,
+            platform VARCHAR(50),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_push_device_tokens_user_id
+          ON push_device_tokens(user_id);
+
+          CREATE TABLE IF NOT EXISTS chat_notification_preferences (
+            chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            is_muted BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (chat_id, user_id)
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_chat_notification_preferences_user_muted
+          ON chat_notification_preferences(user_id, is_muted, updated_at DESC);
+        ''',
+        downSql: '''
+          DROP TABLE IF EXISTS chat_notification_preferences CASCADE;
+          DROP TABLE IF EXISTS push_device_tokens CASCADE;
         ''',
       ),
     ]);

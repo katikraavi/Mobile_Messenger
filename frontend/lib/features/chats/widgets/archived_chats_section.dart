@@ -4,7 +4,9 @@ import '../models/chat_model.dart';
 import '../providers/archived_chats_provider.dart';
 import '../services/chat_api_service.dart';
 import '../providers/active_chats_provider.dart';
-import '../widgets/chat_list_tile_consumer.dart';
+import '../providers/chats_provider.dart';
+import '../providers/user_profile_provider.dart';
+import 'user_avatar_widget.dart';
 
 /// Widget that displays the archived chats section
 /// 
@@ -113,8 +115,9 @@ class _ArchivedChatsSectionState extends ConsumerState<ArchivedChatsSection> {
                     token: widget.token,
                     onUnarchived: () {
                       // Refresh both active and archived chats
-                      ref.refresh(activeChatListProvider(widget.token));
-                      ref.refresh(archivedChatsProvider(widget.token));
+                      ref.invalidate(chatsProvider(widget.token));
+                      ref.invalidate(activeChatListProvider(widget.token));
+                      ref.invalidate(archivedChatsProvider(widget.token));
                     },
                   );
                 },
@@ -145,51 +148,84 @@ class _ArchivedChatTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ListTile(
-      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      tileColor: Colors.grey[50],
-      leading: Icon(Icons.archive_outlined, color: Colors.orange),
-      title: Text(
-        'Chat with $otherUserId',
-        style: TextStyle(color: Colors.grey[600]),
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        'Archived on ${chat.updatedAt.toString().split('.')[0]}',
-        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-      ),
-      trailing: ElevatedButton.icon(
-        onPressed: () async {
-          try {
-            const baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8081');
-            final chatService = ChatApiService(baseUrl: baseUrl);
-            
-            await chatService.unarchiveChat(
-              token: token,
-              chatId: chat.id,
-            );
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Chat unarchived')),
-            );
-            
-            onUnarchived();
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to unarchive: $e'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        },
-        icon: Icon(Icons.unarchive, size: 16),
-        label: Text('Unarchive'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange,
-          foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    final userProfileAsync = ref.watch(userProfileProvider((otherUserId, token)));
+
+    return userProfileAsync.when(
+      loading: () => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        tileColor: Colors.grey[50],
+        leading: const UserAvatarWidget(radius: 20),
+        title: const Text('Loading...'),
+        subtitle: Text(
+          'Archived on ${chat.updatedAt.toString().split('.')[0]}',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
         ),
+      ),
+      error: (error, st) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        tileColor: Colors.grey[50],
+        leading: const UserAvatarWidget(radius: 20),
+        title: const Text('Unknown user'),
+        subtitle: Text(
+          'Archived on ${chat.updatedAt.toString().split('.')[0]}',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        ),
+        trailing: _buildUnarchiveButton(context),
+      ),
+      data: (userProfile) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        tileColor: Colors.grey[50],
+        leading: UserAvatarWidget(
+          imageUrl: userProfile.profilePictureUrl,
+          radius: 20,
+          username: userProfile.username,
+        ),
+        title: Text(
+          userProfile.username ?? 'Unknown user',
+          style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600),
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          'Archived on ${chat.updatedAt.toString().split('.')[0]}',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+        ),
+        trailing: _buildUnarchiveButton(context),
+      ),
+    );
+  }
+
+  Widget _buildUnarchiveButton(BuildContext context) {
+    return ElevatedButton.icon(
+      onPressed: () async {
+        try {
+          const baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8081');
+          final chatService = ChatApiService(baseUrl: baseUrl);
+
+          await chatService.unarchiveChat(
+            token: token,
+            chatId: chat.id,
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Chat unarchived')),
+          );
+
+          onUnarchived();
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to unarchive: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+      icon: const Icon(Icons.unarchive, size: 16),
+      label: const Text('Unarchive'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
     );
   }

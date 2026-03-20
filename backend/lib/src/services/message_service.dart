@@ -41,6 +41,8 @@ class MessageService {
     required String chatId,
     required String senderId,
     required String encryptedContent,
+    String? mediaUrl,
+    String? mediaType,
   }) async {
     // Validate encrypted content format (should be Base64)
     try {
@@ -81,8 +83,8 @@ class MessageService {
 
       await connection.execute(
         '''
-        INSERT INTO $_tableName (id, chat_id, sender_id, recipient_id, encrypted_content, status, created_at)
-        VALUES (@id, @chatId, @senderId, @recipientId, @encryptedContent, 'sent', @createdAt)
+        INSERT INTO $_tableName (id, chat_id, sender_id, recipient_id, encrypted_content, status, created_at, media_url, media_type)
+        VALUES (@id, @chatId, @senderId, @recipientId, @encryptedContent, 'sent', @createdAt, @mediaUrl, @mediaType)
         ''',
         substitutionValues: {
           'id': messageId,
@@ -91,6 +93,8 @@ class MessageService {
           'recipientId': recipientId,
           'encryptedContent': encryptedContent,
           'createdAt': now,
+          'mediaUrl': mediaUrl,
+          'mediaType': mediaType,
         },
       );
 
@@ -122,6 +126,8 @@ class MessageService {
         encryptedContent: encryptedContent,
         status: 'sent',
         createdAt: now,
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
       );
     } catch (e) {
       throw Exception(

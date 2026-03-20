@@ -37,9 +37,9 @@ final messageStatusUpdateProvider = StreamProvider.autoDispose<({
 /// Provider to auto-mark messages as read when viewing a chat
 /// Call this when entering a chat to mark all unread messages as 'read'
 final autoMarkAsReadProvider =
-    FutureProvider.family<void, ({String chatId, String token})>(
+    FutureProvider.family<void, ({String chatId, String token, String currentUserId})>(
   (ref, params) async {
-    final (:chatId, :token) = params;
+    final (:chatId, :token, :currentUserId) = params;
     final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
 
     try {
@@ -69,7 +69,7 @@ final autoMarkAsReadProvider =
       print('[AutoMarkAsRead] 🔐 Decrypted ${decryptedMessages.length} messages');
       
       final unreadMessages = decryptedMessages
-          .where((msg) => msg.status != 'read')
+          .where((msg) => msg.status != 'read' && msg.senderId != currentUserId)
           .toList();
 
       print('[AutoMarkAsRead] 📖 Found ${unreadMessages.length} unread messages (status != "read")');

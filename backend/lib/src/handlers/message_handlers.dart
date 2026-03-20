@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:postgres/postgres.dart';
 
 import '../services/message_service.dart';
+import '../services/notification_service.dart';
 import '../services/websocket_service.dart';
 import '../models/message_model.dart';
 import '../models/enums.dart';
@@ -73,10 +74,18 @@ class MessageHandlers {
       final json = jsonDecode(body) as Map<String, dynamic>;
 
       final encryptedContent = json['encrypted_content'] as String?;
+      final mediaUrl = json['media_url'] as String?;
+      final mediaType = json['media_type'] as String?;
       if (encryptedContent == null || encryptedContent.isEmpty) {
         return Response(400,
             body: jsonEncode({'error': 'encrypted_content is required'}),
             headers: {'Content-Type': 'application/json'});
+      }
+
+      if ((mediaUrl == null) != (mediaType == null)) {
+        return Response(400,
+        body: jsonEncode({'error': 'media_url and media_type must be provided together'}),
+        headers: {'Content-Type': 'application/json'});
       }
 
       // Check if user is a participant
@@ -109,6 +118,8 @@ class MessageHandlers {
           chatId: chatId,
           senderId: userId,
           encryptedContent: encryptedContent,
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
         );
 
         // Fetch sender user info for WebSocket broadcast
@@ -126,20 +137,43 @@ class MessageHandlers {
 
         // Broadcast message to other participant via WebSocket (T021)
         // Include sender user info for real-time display
-        _webSocketService.notifyMessageCreated(
-          chatId,
-          {
-            'id': message.id,
-            'chat_id': message.chatId,
-            'sender_id': message.senderId,
-            'recipient_id': message.recipientId,
-            'encrypted_content': message.encryptedContent,
-            'status': message.status,
-            'created_at': message.createdAt.toIso8601String(),
-            'sender_username': senderUsername,
-            'sender_avatar_url': senderAvatarUrl,
-          },
-        );
+        final messagePayload = {
+          'id': message.id,
+          'chat_id': message.chatId,
+          'chatId': message.chatId,
+          'sender_id': message.senderId,
+          'recipient_id': message.recipientId,
+          'encrypted_content': message.encryptedContent,
+          'status': message.status,
+          'created_at': message.createdAt.toIso8601String(),
+          'media_url': message.mediaUrl,
+          'media_type': message.mediaType,
+          'sender_username': senderUsername,
+          'sender_avatar_url': senderAvatarUrl,
+        };
+
+        _webSocketService.notifyMessageCreated(chatId, messagePayload);
+
+        if (message.recipientId != null) {
+          _webSocketService.notifyUser(
+            message.recipientId!,
+            WebSocketEvent(
+              type: WebSocketEventType.messageCreated,
+              data: messagePayload,
+            ),
+          );
+
+          final notificationService = NotificationService(connection);
+          await notificationService.notifyNewMessage(
+            recipientUserId: message.recipientId!,
+            chatId: chatId,
+            senderName: senderUsername ?? 'New message',
+            body: _buildNotificationPreview(
+              encryptedContent: encryptedContent,
+              mediaType: mediaType,
+            ),
+          );
+        }
 
         return Response(
           201,
@@ -156,6 +190,29 @@ class MessageHandlers {
       return Response.internalServerError(
           body: jsonEncode({'error': 'Internal server error: $e'}),
           headers: {'Content-Type': 'application/json'});
+    }
+  }
+
+  static String _buildNotificationPreview({
+    required String encryptedContent,
+    String? mediaType,
+  }) {
+    if (mediaType != null) {
+      if (mediaType.startsWith('image/')) {
+        return '[Image]';
+      }
+      if (mediaType.startsWith('video/')) {
+        return '[Video]';
+      }
+      if (mediaType.startsWith('audio/')) {
+        return '[Audio message]';
+      }
+    }
+
+    try {
+      return utf8.decode(base64Decode(encryptedContent));
+    } catch (_) {
+      return 'New message';
     }
   }
 

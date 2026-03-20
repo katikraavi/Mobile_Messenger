@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/password_recovery_provider.dart';
-import 'package:uuid/uuid.dart';
 
 /// Screen for requesting password reset
 /// User enters email to request password reset
@@ -42,12 +41,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       return;
     }
 
-    // Generate a UUID for password recovery flow (user may not be authenticated)
-    final userId = const Uuid().v4();
-
     ref
         .read(passwordRecoveryProvider.notifier)
-        .requestPasswordReset(email: email, userId: userId);
+      .requestPasswordReset(email: email);
   }
 
   @override

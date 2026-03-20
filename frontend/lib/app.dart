@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:frontend/core/notifications/app_feedback_service.dart';
+import 'package:frontend/core/services/app_exception_logger.dart';
 import 'package:frontend/core/services/api_client.dart';
 import 'package:frontend/core/push_notifications/push_notification_handler.dart';
+import 'package:frontend/core/notifications/local_notification_service.dart';
 import 'package:frontend/features/auth/models/auth_models.dart';
 import 'package:frontend/features/auth/providers/auth_provider.dart';
 import 'package:frontend/features/auth/screens/auth_flow_screen.dart';
@@ -13,6 +18,9 @@ import 'package:frontend/features/invitations/screens/invitations_screen.dart';
 import 'package:frontend/features/invitations/providers/invites_provider.dart';
 import 'package:frontend/features/chats/screens/chat_list_screen.dart';
 import 'package:frontend/features/chats/providers/chat_cache_invalidator.dart';
+import 'package:frontend/features/chats/providers/websocket_provider.dart';
+import 'package:frontend/features/chats/services/message_websocket_service.dart';
+import 'package:frontend/features/chats/services/chat_notification_settings_service.dart';
 
 String _displayName(String? value) {
   if (value == null || value.isEmpty) {
@@ -49,21 +57,35 @@ class _MessengerAppState extends State<MessengerApp> {
     _initializePushNotifications();
   }
 
-  /// Initialize push notifications
-  /// 
-  /// Sets up Firebase Cloud Messaging to receive and handle push notifications
+  /// Initialize local and remote notification handling.
   Future<void> _initializePushNotifications() async {
     try {
-      // Skip push setup when Firebase is not initialized in local/dev runs.
+      await LocalNotificationService.instance.initialize(
+        onPayloadTap: _handleNotificationPayload,
+      );
+
       if (Firebase.apps.isEmpty) {
-        print('[App] Firebase is not initialized - skipping push notifications');
+        print('[App] Firebase is not initialized - remote push disabled for this run');
         return;
       }
 
       await PushNotificationHandler().initialize(navigatorKey: _navigatorKey);
       print('[App] Push notifications initialized');
     } catch (e) {
-      print('[App Error] Failed to initialize push notifications: $e');
+      AppExceptionLogger.log(
+        e,
+        context: 'MessengerApp._initializePushNotifications',
+      );
+      AppFeedbackService.showWarning(
+        'Push notifications are unavailable. Messenger continues without them.',
+      );
+    }
+  }
+
+  void _handleNotificationPayload(Map<String, dynamic> payload) {
+    final type = payload['type'] as String?;
+    if (type == 'chat_invite') {
+      _navigatorKey.currentState?.pushNamed('/invitations');
     }
   }
 
@@ -85,14 +107,43 @@ class _MessengerAppState extends State<MessengerApp> {
     print('[App] Backend connected: $_isConnected');
   }
 
+  Future<void> _retryBackendConnection() async {
+    setState(() {
+      _isInitializing = true;
+    });
+
+    final isConnected = await ApiClient.connectToBackend();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isConnected = isConnected;
+      _isInitializing = false;
+    });
+
+    if (!isConnected) {
+      AppFeedbackService.showError(
+        'Still unable to reach the backend. Messenger remains on the last stable screen.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
       title: 'Mobile Messenger',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        snackBarTheme: const SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          insetPadding: EdgeInsets.fromLTRB(16, 12, 16, 88),
+          dismissDirection: DismissDirection.horizontal,
+        ),
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -100,6 +151,11 @@ class _MessengerAppState extends State<MessengerApp> {
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
+        snackBarTheme: const SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          insetPadding: EdgeInsets.fromLTRB(16, 12, 16, 88),
+          dismissDirection: DismissDirection.horizontal,
+        ),
       ),
       themeMode: ThemeMode.system,
       routes: {
@@ -116,7 +172,7 @@ class _MessengerAppState extends State<MessengerApp> {
     }
 
     if (!_isConnected) {
-      return const _ConnectionErrorScreen();
+      return _ConnectionErrorScreen(onRetry: _retryBackendConnection);
     }
 
     return const _HomeScreen();
@@ -154,7 +210,9 @@ class _LoadingScreen extends StatelessWidget {
 
 /// Error screen shown if backend connection fails
 class _ConnectionErrorScreen extends StatelessWidget {
-  const _ConnectionErrorScreen();
+  final Future<void> Function() onRetry;
+
+  const _ConnectionErrorScreen({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -180,10 +238,7 @@ class _ConnectionErrorScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () {
-                // Restart app or retry connection
-                print('[App] Retry clicked');
-              },
+              onPressed: onRetry,
               child: const Text('Retry'),
             ),
           ],
@@ -202,14 +257,153 @@ class _HomeScreen extends riverpod.ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends riverpod.ConsumerState<_HomeScreen> {
+  String? _connectedRealtimeUserId;
+  riverpod.ProviderSubscription<riverpod.AsyncValue<WebSocketEvent>>? _messageEventSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageEventSubscription = ref.listenManual(messageEventStreamProvider, (previous, next) {
+      next.whenData((event) async {
+        final authProvider = context.read<AuthProvider>();
+        try {
+          await _handleRealtimeEvent(event, authProvider);
+        } catch (e, st) {
+          AppExceptionLogger.log(
+            e,
+            stackTrace: st,
+            context: 'HomeScreen.messageEventListener',
+          );
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageEventSubscription?.close();
+    _disconnectRealtime();
+    super.dispose();
+  }
+
+  Future<void> _ensureRealtimeConnected(AuthProvider authProvider) async {
+    final token = authProvider.token;
+    final userId = authProvider.user?.userId;
+    if (token == null || userId == null) {
+      return;
+    }
+
+    if (_connectedRealtimeUserId == userId) {
+      return;
+    }
+
+    try {
+      await ref.read(messageWebSocketProvider.notifier).connect(
+        token: token,
+        userId: userId,
+      );
+      await ChatNotificationSettingsService.instance.syncMutedChats(token);
+      await ChatNotificationSettingsService.instance.tryRegisterFcmToken(token: token);
+      _connectedRealtimeUserId = userId;
+    } catch (e) {
+      AppExceptionLogger.log(
+        e,
+        context: 'HomeScreen._ensureRealtimeConnected',
+      );
+      await _disconnectRealtime();
+      AppFeedbackService.showWarning(
+        'Realtime sync is unavailable. Messenger restored the last synced state.',
+      );
+    }
+  }
+
+  Future<void> _disconnectRealtime() async {
+    if (_connectedRealtimeUserId == null) {
+      return;
+    }
+
+    await ref.read(messageWebSocketProvider.notifier).disconnect();
+    _connectedRealtimeUserId = null;
+  }
+
+  Future<void> _handleRealtimeEvent(
+    WebSocketEvent event,
+    AuthProvider authProvider,
+  ) async {
+    try {
+      final currentUserId = authProvider.user?.userId;
+      if (event.type == WebSocketEventType.messageCreated) {
+        final senderId = event.data['sender_id'] as String?;
+        if (senderId == null || senderId == currentUserId) {
+          return;
+        }
+
+        final chatId = (event.data['chatId'] ?? event.data['chat_id']) as String?;
+        if (chatId == null || ChatNotificationSettingsService.instance.isMutedLocally(chatId)) {
+          return;
+        }
+
+        final mediaType = event.data['media_type'] as String?;
+        final title = event.data['sender_username'] as String? ?? 'New message';
+        var body = 'New message';
+        if (mediaType != null) {
+          if (mediaType.startsWith('image/')) {
+            body = '[Image]';
+          } else if (mediaType.startsWith('video/')) {
+            body = '[Video]';
+          } else if (mediaType.startsWith('audio/')) {
+            body = '[Audio message]';
+          }
+        } else {
+          final encryptedContent = event.data['encrypted_content'] as String?;
+          if (encryptedContent != null && encryptedContent.isNotEmpty) {
+            try {
+              body = utf8.decode(base64Decode(encryptedContent));
+            } catch (_) {
+              body = 'New message';
+            }
+          }
+        }
+
+        await LocalNotificationService.instance.showMessageNotification(
+          chatId: chatId,
+          title: title,
+          body: body,
+        );
+        return;
+      }
+
+      if (event.type == WebSocketEventType.invitationSent) {
+        final inviteId = event.data['inviteId'] as String? ?? '';
+        final senderName = event.data['senderName'] as String? ?? 'Someone';
+        await LocalNotificationService.instance.showInviteNotification(
+          inviteId: inviteId,
+          title: 'Chat invite',
+          body: '$senderName sent you a chat invite',
+        );
+        ref.invalidate(pendingInvitesProvider);
+        ref.invalidate(pendingInviteCountProvider);
+      }
+    } catch (e, st) {
+      AppExceptionLogger.log(
+        e,
+        stackTrace: st,
+        context: 'HomeScreen._handleRealtimeEvent',
+      );
+      rethrow;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         print('[HomeScreen] isAuthenticated: ${authProvider.isAuthenticated}, user: ${authProvider.user?.username}');
-        
-        // Show auth flow if not authenticated
+
         if (!authProvider.isAuthenticated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _disconnectRealtime();
+          });
           return AuthFlowScreen(
             onAuthSuccess: () {
               print('[Auth] User logged in: ${authProvider.user?.username}');
@@ -222,6 +416,10 @@ class _HomeScreenState extends riverpod.ConsumerState<_HomeScreen> {
             },
           );
         }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ensureRealtimeConnected(authProvider);
+        });
 
         // Show main app if authenticated
         return _AuthenticatedHomeScreen(
@@ -288,6 +486,7 @@ class _AuthenticatedHomeScreenState extends riverpod.ConsumerState<_Authenticate
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
+              await ref.read(messageWebSocketProvider.notifier).disconnect();
               // Clear auth state first, then invalidate invite cache
               await widget.authProvider.logout();
               // After logout completes, increment cache invalidator to clear any remaining data
