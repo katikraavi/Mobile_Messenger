@@ -1,0 +1,99 @@
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:13-alpine
+    container_name: messenger-postgres
+    environment:
+      POSTGRES_USER: messenger_user
+      POSTGRES_PASSWORD: messenger_password
+      POSTGRES_DB: messenger_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U messenger_user -d messenger_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      messenger-network:
+        ipv4_address: 172.20.0.2
+    restart: unless-stopped
+
+  # Serverpod Backend Service
+  serverpod:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: messenger-backend
+    environment:
+      DATABASE_URL: postgres://messenger_user:messenger_password@postgres:5432/messenger_db
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: messenger_db
+      DATABASE_USER: messenger_user
+      DATABASE_PASSWORD: messenger_password
+      SERVERPOD_ENV: development
+      SERVERPOD_PORT: 8081
+      ENCRYPTION_MASTER_KEY: a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2
+      # ── Email (SMTP) ────────────────────────────────────────────────────
+      # Development default routes to Mailhog for local email testing.
+      # Override via .env for real SMTP providers (SendGrid, Mailgun, etc.).
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@local.messenger}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Mobile Messenger}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      APP_BASE_URL: "http://localhost:8081"
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      messenger-network:
+        ipv4_address: 172.20.0.3
+    restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend:ro
+      - uploads_data:/app/uploads
+
+  # ── Mailhog — local email catcher ──────────────────────────────────
+  # All outgoing emails are caught here during development.
+  # Web UI: http://localhost:8025  |  SMTP: localhost:1025
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: messenger-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      messenger-network:
+        ipv4_address: 172.20.0.4
+    restart: unless-stopped
+
+networks:
+  messenger-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
