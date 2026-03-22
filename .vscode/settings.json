@@ -10,6 +10,18 @@
         ".specify/scripts/bash/": true,
         ".specify/scripts/powershell/": true
     },
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "files.exclude": {
+        "**/flutter/ephemeral": true,
+        "**/.dart_tool": true
+    },
+    "search.exclude": {
+        "**/flutter/ephemeral": true,
+        "**/.dart_tool": true
+    },
+    "files.watcherExclude": {
+        "**/flutter/ephemeral/**": true,
+        "**/.dart_tool/**": true
+    }
 }
 

@@ -44,7 +44,7 @@ If you want a single command that:
 use:
 
 ```bash
-./run_gmail_email_smoke_test.sh
+./scripts/manual-tests/run_gmail_email_smoke_test.sh
 ```
 
 This expects either:
@@ -77,6 +77,9 @@ mobile-messenger/
 │   │       └── models/      # Data models
 │   ├── migrations/       # Database migrations
 │   └── pubspec.yaml
+│
+├── scripts/              # Operational and manual test scripts
+│   └── manual-tests/
 │
 ├── docker-compose.yml    # Local development orchestration
 └── .env.example          # Environment template
@@ -146,7 +149,7 @@ docker-compose restart serverpod
 docker compose up -d --build
 
 # Start backend with Gmail SMTP and run live email smoke test
-./run_gmail_email_smoke_test.sh
+./scripts/manual-tests/run_gmail_email_smoke_test.sh
 ```
 
 If your local ignored `.env` is configured for Gmail SMTP, plain `docker compose up` will send real emails. If `.env` is configured for MailHog, emails will be captured locally instead.
@@ -188,7 +191,7 @@ dart test
 
 ```bash
 # Test invite endpoints via API
-./test_invites.sh
+./scripts/manual-tests/test_invites.sh
 
 # For comprehensive testing guide, see:
 # - INVITE_TESTING_GUIDE.md (complete reference)
