@@ -472,16 +472,6 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     String token,
   ) async {
     try {
-      // For now, we'll just show a snackbar since backend isn't deployed yet
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Message edit feature coming soon'),
-          action: SnackBarAction(label: 'OK', onPressed: () {}),
-        ),
-      );
-
-      // TODO: Uncomment when backend is ready
-      /*
       final editedMessage = await ref.read(editMessageProvider(
         (
           widget.chatId,
@@ -490,22 +480,31 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
           token,
         ),
       ).future);
-      
+      if (!mounted) {
+        return;
+      }
+
+      final currentUserId = currentUserIdFromContext();
+      ref
+          .read(
+            localMessagesProvider((
+              chatId: widget.chatId,
+              token: token,
+              currentUserId: currentUserId,
+            )).notifier,
+          )
+          .applyEditedMessage(editedMessage);
+
       debugPrint('[ChatDetail] ✅ Message edited: ${message.id}');
-      
-      // Refresh message list to show updated content
-      await ref.refresh(
-        messagesWithCacheProvider(
-          (chatId: widget.chatId, token: token),
-        ),
-      );
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Message edited successfully')),
       );
-      */
     } catch (e) {
       debugPrint('[ChatDetail] ❌ Error editing message: $e');
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to edit: $e')));
@@ -522,27 +521,35 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
         ),
       );
 
-      // TODO: Uncomment when backend is ready
-      /*
       await ref.read(deleteMessageProvider(
         (widget.chatId, message.id, token),
       ).future);
 
-      debugPrint('[ChatDetail] ✅ Message deleted: ${message.id}');
+      if (!mounted) {
+        return;
+      }
 
-      // Refresh message list to reflect deletion
-      await ref.refresh(
-        messagesWithCacheProvider(
-          (chatId: widget.chatId, token: token),
-        ),
-      );
+      final currentUserId = currentUserIdFromContext();
+      ref
+          .read(
+            localMessagesProvider((
+              chatId: widget.chatId,
+              token: token,
+              currentUserId: currentUserId,
+            )).notifier,
+          )
+          .applyDeletedMessage(message.id);
+
+      debugPrint('[ChatDetail] ✅ Message deleted: ${message.id}');
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Message deleted')),
       );
-      */
     } catch (e) {
       debugPrint('[ChatDetail] ❌ Error deleting message: $e');
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));

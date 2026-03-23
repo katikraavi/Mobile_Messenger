@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/notifications/app_feedback_service.dart';
@@ -205,6 +206,27 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
           );
           updateMessageStatus(messageId, newStatus);
         }
+      } else if (event.type == WebSocketEventType.messageEdited) {
+        final editedMessage = Message.fromJson(event.data);
+        if (editedMessage.isDeleted) {
+          applyDeletedMessage(editedMessage.id);
+          return;
+        }
+
+        if (editedMessage.encryptedContent.isNotEmpty) {
+          try {
+            final decryptedEditedMessage =
+                await MessageEncryptionService.decryptMessage(editedMessage);
+            applyEditedMessage(decryptedEditedMessage);
+          } catch (_) {
+            applyEditedMessage(editedMessage);
+          }
+        } else {
+          applyEditedMessage(editedMessage);
+        }
+      } else if (event.type == WebSocketEventType.messageDeleted) {
+        final deletedMessage = Message.fromJson(event.data);
+        applyDeletedMessage(deletedMessage.id);
       }
     } catch (e) {
       print('[LocalMessagesNotifier] ❌ Error handling WebSocket event: $e');
@@ -366,6 +388,48 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
     }
 
     addMessage(message);
+  }
+
+  /// Apply an edited message payload while preserving local transient fields.
+  void applyEditedMessage(Message editedMessage) {
+    final index = state.indexWhere((m) => m.id == editedMessage.id);
+    if (index < 0) {
+      addMessage(editedMessage);
+      return;
+    }
+
+    final current = state[index];
+    final merged = editedMessage.copyWith(
+      isSending: false,
+      error: null,
+      decryptionError: null,
+      status: editedMessage.status.isEmpty ? current.status : editedMessage.status,
+      decryptedContent: editedMessage.decryptedContent ?? current.decryptedContent,
+    );
+
+    final updatedMessages = [...state];
+    updatedMessages[index] = merged;
+    updatedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    state = updatedMessages;
+  }
+
+  /// Mark an existing message as deleted in local state.
+  void applyDeletedMessage(String messageId) {
+    final index = state.indexWhere((m) => m.id == messageId);
+    if (index < 0) {
+      return;
+    }
+
+    final current = state[index];
+    final updatedMessages = [...state];
+    updatedMessages[index] = current.copyWith(
+      isDeleted: true,
+      deletedAt: current.deletedAt ?? DateTime.now(),
+      isSending: false,
+      error: null,
+      decryptionError: null,
+    );
+    state = updatedMessages;
   }
 
   /// Status hierarchy: sent (0) < delivered (1) < read (2)
@@ -583,12 +647,16 @@ final editMessageProvider =
           '[EditMessageProvider] 📝 Editing message $messageId with new content',
         );
 
+        final encryptedContent = base64Encode(utf8.encode(newContent));
         final editedMessage = await apiService.editMessage(
           token: token,
           chatId: chatId,
           messageId: messageId,
-          newEncryptedContent: newContent,
+          newEncryptedContent: encryptedContent,
         );
+
+        final decryptedEditedMessage =
+            await MessageEncryptionService.decryptMessage(editedMessage);
 
         print('[EditMessageProvider] ✓ Message edited successfully');
 
@@ -597,7 +665,7 @@ final editMessageProvider =
           messagesWithCacheProvider((chatId: chatId, token: token)),
         );
 
-        return editedMessage;
+        return decryptedEditedMessage;
       } catch (e) {
         print('[EditMessageProvider] ❌ Error editing message: $e');
         rethrow;

@@ -26,7 +26,6 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onRetry; // Callback to retry failed send
   final Function(String)? onEdit; // Callback for edit action (T052)
-  final VoidCallback? onDelete; // Callback for delete action (T052)
   
   /// Whether this is the last message from this sender in a group
   final bool isLastFromSender;
@@ -41,7 +40,6 @@ class MessageBubble extends StatelessWidget {
     this.onLongPress,
     this.onRetry,
     this.onEdit,
-    this.onDelete,
     this.isLastFromSender = true,
     this.isFirstFromSender = true,
   });
