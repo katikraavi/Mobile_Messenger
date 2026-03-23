@@ -89,18 +89,39 @@ class Message {
 
   /// Create Message from Postgres query result row
   factory Message.fromPostgres(List row) {
-    return Message(
-      id: row[0] as String,
-      chatId: row[1] as String,
-      senderId: row[2] as String,
-      encryptedContent: row[3] as String,
-      status: row.length > 6 ? row[6] as String? ?? 'sent' : 'sent',
-      createdAt: row.length > 7 ? row[7] as DateTime : row[4] as DateTime,
-      editedAt: row.length > 8 && row[8] != null ? row[8] as DateTime : null,
-      deletedAt: row.length > 9 && row[9] != null ? row[9] as DateTime : null,
-      isDeleted: row.length > 10 && row[10] != null ? row[10] as bool : false,
-      mediaUrl: row.length > 11 ? row[11] as String? : null,
-      mediaType: row.length > 12 ? row[12] as String? : null,
+    // Supports both compact selects:
+    //   SELECT id, chat_id, sender_id, encrypted_content, created_at
+    // and full-row selects:
+    //   SELECT * FROM messages
+    if (row.length == 5) {
+      return Message(
+        id: row[0] as String,
+        chatId: row[1] as String,
+        senderId: row[2] as String,
+        encryptedContent: row[3] as String,
+        createdAt: row[4] as DateTime,
+      );
+    }
+
+    if (row.length >= 12) {
+      return Message(
+        id: row[0] as String,
+        chatId: row[1] as String,
+        senderId: row[2] as String,
+        encryptedContent: row[3] as String,
+        createdAt: row[4] as DateTime,
+        recipientId: row[5] as String?,
+        status: row[6] as String? ?? 'sent',
+        editedAt: row[7] as DateTime?,
+        deletedAt: row[8] as DateTime?,
+        isDeleted: row[9] as bool? ?? false,
+        mediaUrl: row[10] as String?,
+        mediaType: row[11] as String?,
+      );
+    }
+
+    throw ArgumentError(
+      'Unsupported message row format. Expected 5 or >=12 columns, got ${row.length}',
     );
   }
   

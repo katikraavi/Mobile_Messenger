@@ -1470,10 +1470,7 @@ Handler _createHandler(
 
       // PUT /api/chats/{chatId}/messages/{messageId} - Edit a message (T049)
       if (path.startsWith('api/chats/') &&
-          path.contains('/messages/') &&
-          !path.endsWith('/status') &&
-          !path.contains('/messages/') &&
-          path != path.replaceAll(RegExp(r'/messages/[^/]+$'), '/messages/X') &&
+          RegExp(r'^api/chats/[^/]+/messages/[^/]+$').hasMatch(path) &&
           method == 'PUT') {
         try {
           final parts = path.split('/');

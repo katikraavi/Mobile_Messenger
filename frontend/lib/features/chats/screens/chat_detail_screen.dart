@@ -471,6 +471,25 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
     String newContent,
     String token,
   ) async {
+    final currentUserId = currentUserIdFromContext();
+    final messagesNotifier = ref.read(
+      localMessagesProvider((
+        chatId: widget.chatId,
+        token: token,
+        currentUserId: currentUserId,
+      )).notifier,
+    );
+
+    // Optimistic local update so edited content shows immediately in UI.
+    final optimisticEditedMessage = message.copyWith(
+      decryptedContent: newContent,
+      encryptedContent: base64Encode(utf8.encode(newContent)),
+      editedAt: DateTime.now(),
+      error: null,
+      decryptionError: null,
+    );
+    messagesNotifier.applyEditedMessage(optimisticEditedMessage);
+
     try {
       final editedMessage = await ref.read(editMessageProvider(
         (
@@ -484,16 +503,8 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
         return;
       }
 
-      final currentUserId = currentUserIdFromContext();
-      ref
-          .read(
-            localMessagesProvider((
-              chatId: widget.chatId,
-              token: token,
-              currentUserId: currentUserId,
-            )).notifier,
-          )
-          .applyEditedMessage(editedMessage);
+      // Reconcile optimistic state with canonical server payload.
+      messagesNotifier.applyEditedMessage(editedMessage);
 
       debugPrint('[ChatDetail] ✅ Message edited: ${message.id}');
 
@@ -502,6 +513,10 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
       );
     } catch (e) {
       debugPrint('[ChatDetail] ❌ Error editing message: $e');
+
+      // Roll back optimistic edit on failure.
+      messagesNotifier.applyEditedMessage(message);
+
       if (!mounted) {
         return;
       }

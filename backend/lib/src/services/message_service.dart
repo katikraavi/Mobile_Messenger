@@ -471,8 +471,8 @@ class MessageService {
       // Store previous content in message_edits table
       await connection.execute(
         '''
-        INSERT INTO message_edits (id, message_id, edit_number, previous_content, edited_at)
-        VALUES (@editId, @messageId, @editNumber, @previousContent, @now)
+        INSERT INTO message_edits (id, message_id, edit_number, previous_content, edited_at, edited_by)
+        VALUES (@editId, @messageId, @editNumber, @previousContent, @now, @editedBy)
         ''',
         substitutionValues: {
           'editId': _uuid.v4(),
@@ -480,6 +480,7 @@ class MessageService {
           'editNumber': nextEditNumber,
           'previousContent': message.encryptedContent,
           'now': DateTime.now(),
+          'editedBy': editedByUserId,
         },
       );
 

@@ -35,6 +35,7 @@ class UserAvatarWidget extends StatefulWidget {
 class _UserAvatarWidgetState extends State<UserAvatarWidget> {
   late bool _useNetworkImage;
   late bool _useAssetImage;
+  static bool _loggedMissingAssetOnce = false;
 
   @override
   void initState() {
@@ -82,7 +83,7 @@ class _UserAvatarWidgetState extends State<UserAvatarWidget> {
       width: widget.radius * 2,
       height: widget.radius * 2,
       errorBuilder: (context, error, stackTrace) {
-        print('[UserAvatarWidget] ❌ Network image failed to load: $error');
+        print('[UserAvatarWidget] Network image unavailable, falling back.');
         // Don't call setState, just return fallback immediately
         return _buildAssetFallback();
       },
@@ -118,7 +119,12 @@ class _UserAvatarWidgetState extends State<UserAvatarWidget> {
       width: widget.radius * 2,
       height: widget.radius * 2,
       errorBuilder: (context, error, stackTrace) {
-        print('[UserAvatarWidget] ❌ Asset image failed to load: $error');
+        if (!_loggedMissingAssetOnce) {
+          print(
+            '[UserAvatarWidget] Default avatar asset unavailable; using icon fallback.',
+          );
+          _loggedMissingAssetOnce = true;
+        }
         // Asset failed, return icon directly
         return _buildIconAvatar();
       },

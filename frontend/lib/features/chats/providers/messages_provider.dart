@@ -351,8 +351,14 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
           messageId: messageId,
           newStatus: 'delivered',
         )
-        .then((_) {
-          print('[LocalMessagesNotifier] 📦 Marked $messageId as delivered');
+        .then((ok) {
+          if (ok) {
+            print('[LocalMessagesNotifier] 📦 Marked $messageId as delivered');
+            return;
+          }
+          print(
+            '[LocalMessagesNotifier] ⚠️ Backend rejected delivered status for $messageId',
+          );
         })
         .catchError((e) {
           print(
@@ -491,15 +497,22 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
       print(
         '[LocalMessagesNotifier] 📤 Calling API to mark $messageId as read and broadcast...',
       );
-      await apiService.updateMessageStatus(
+      final ok = await apiService.updateMessageStatus(
         token: token,
         chatId: chatId,
         messageId: messageId,
         newStatus: 'read',
       );
-      print(
-        '[LocalMessagesNotifier] ✅ API call success: $messageId marked as read',
-      );
+
+      if (ok) {
+        print(
+          '[LocalMessagesNotifier] ✅ API call success: $messageId marked as read',
+        );
+      } else {
+        print(
+          '[LocalMessagesNotifier] ⚠️ Backend rejected read status for $messageId',
+        );
+      }
     } catch (e) {
       print('[LocalMessagesNotifier] ⚠️ Error marking $messageId as read: $e');
     }

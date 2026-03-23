@@ -493,15 +493,40 @@ class ChatApiService {
         print('[ChatApiService] ✅ Message edited successfully: $messageId');
         return editedMessage;
       } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Invalid or expired token');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Unauthorized: Invalid or expired token',
+          ),
+        );
       } else if (response.statusCode == 403) {
-        throw Exception('Forbidden: You can only edit your own messages');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Forbidden: You can only edit your own messages',
+          ),
+        );
       } else if (response.statusCode == 404) {
-        throw Exception('Message not found');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Message not found',
+          ),
+        );
       } else if (response.statusCode >= 500) {
-        throw Exception('Server error: ${response.statusCode}');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Server error: ${response.statusCode}',
+          ),
+        );
       } else {
-        throw Exception('Failed to edit message: ${response.statusCode}');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Failed to edit message: ${response.statusCode}',
+          ),
+        );
       }
     } catch (e) {
       print('[ChatApiService] ❌ Error editing message: $e');
@@ -541,15 +566,40 @@ class ChatApiService {
         print('[ChatApiService] ✅ Message deleted successfully: $messageId');
         return;
       } else if (response.statusCode == 401) {
-        throw Exception('Unauthorized: Invalid or expired token');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Unauthorized: Invalid or expired token',
+          ),
+        );
       } else if (response.statusCode == 403) {
-        throw Exception('Forbidden: You can only delete your own messages');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Forbidden: You can only delete your own messages',
+          ),
+        );
       } else if (response.statusCode == 404) {
-        throw Exception('Message not found');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Message not found',
+          ),
+        );
       } else if (response.statusCode >= 500) {
-        throw Exception('Server error: ${response.statusCode}');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Server error: ${response.statusCode}',
+          ),
+        );
       } else {
-        throw Exception('Failed to delete message: ${response.statusCode}');
+        throw Exception(
+          _buildApiErrorMessage(
+            response,
+            fallback: 'Failed to delete message: ${response.statusCode}',
+          ),
+        );
       }
     } catch (e) {
       print('[ChatApiService] ❌ Error deleting message: $e');
@@ -557,7 +607,30 @@ class ChatApiService {
     }
   }
 
-  Future<void> updateMessageStatus({
+  String _buildApiErrorMessage(http.Response response, {required String fallback}) {
+    try {
+      if (response.body.isEmpty) {
+        return fallback;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final error = decoded['error'] as String?;
+        final message = decoded['message'] as String?;
+        if (error != null && error.isNotEmpty) {
+          return '$fallback ($error)';
+        }
+        if (message != null && message.isNotEmpty) {
+          return '$fallback ($message)';
+        }
+      }
+    } catch (_) {
+      // Ignore parse errors and keep fallback
+    }
+    return fallback;
+  }
+
+  Future<bool> updateMessageStatus({
     required String token,
     required String chatId,
     required String messageId,
@@ -586,10 +659,16 @@ class ChatApiService {
         print(
           '[ChatApiService] ✅ Message status updated: $messageId → $newStatus',
         );
+        return true;
       } else if (response.statusCode == 401) {
         throw Exception('Unauthorized: Invalid or expired token');
       } else if (response.statusCode == 404) {
         throw Exception('Message not found');
+      } else if (response.statusCode == 400) {
+        print(
+          '[ChatApiService] ⚠️ Status update rejected: ${_buildApiErrorMessage(response, fallback: 'Bad request')}',
+        );
+        return false;
       } else if (response.statusCode >= 500) {
         throw Exception('Server error: ${response.statusCode}');
       } else {
@@ -597,10 +676,12 @@ class ChatApiService {
           '[ChatApiService] ⚠️ Status update returned ${response.statusCode}',
         );
         // Non-blocking - status update is best-effort
+        return false;
       }
     } catch (e) {
       print('[ChatApiService] ⚠️ Error updating message status: $e');
       // Non-blocking - status update is best-effort, don't rethrow
+      return false;
     }
   }
 
