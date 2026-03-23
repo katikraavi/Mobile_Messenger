@@ -101,7 +101,6 @@ app.*.map.json
 # Docker ignores
 node_modules/
 .git/
-Dockerfile*
 .dockerignore
 *.log*
 coverage/
