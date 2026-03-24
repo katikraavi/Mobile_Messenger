@@ -1,0 +1,24 @@
+[INFO] Starting Messenger Server (environment: development)
+[INFO] Connecting to PostgreSQL database...
+[✓] Connected to database successfully
+[INFO] Running database migrations...
+[✓] Database migrations completed
+[INFO] Seeding test users for development...
+[TestUsers] ⊘ @alice already exists
+[TestUsers] ⊘ @bob already exists
+[TestUsers] ⊘ @charlie already exists
+[TestUsers] ⊘ @diane already exists
+[TestUsers] All test users already exist
+[INFO] Services initialized
+[INFO] Initializing profile service...
+╔═══════════════════════════════════════════════════════╗
+║ 🚀 Messenger Backend Started                          ║
+║ Port: 8081                                         ║
+║ Health: http://localhost:8081/health              ║
+║ Schema: http://localhost:8081/schema              ║
+║                                                       ║
+║ ✓ Services initialized                                ║
+║ ✓ Email verification & password recovery enabled      ║
+║ ✓ Search service ready                                ║
+║ ✓ Database connected & ready                          ║
+╚═══════════════════════════════════════════════════════╝

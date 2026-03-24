@@ -1,0 +1,61 @@
+# Git and version control
+.git/
+.gitignore
+.gitattributes
+
+# Development tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+target/
+*.apk
+*.ipa
+.build/
+
+# Dependencies and cache
+node_modules/
+.pub-cache/
+.pub/
+pubspec.lock
+.packages
+.dart_tool/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Environment
+.env*
+!.env.example
+
+# IDE and editor files
+*.iml
+.gradle/
+android/.gradle
+ios/Pods/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation
+README.md
+CONTRIBUTING.md
+docs/
+
+# Frontend build
+frontend/build/
+frontend/web/
+
+# Backend build
+backend/build/
+backend/.dart_tool/

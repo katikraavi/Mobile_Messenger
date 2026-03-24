@@ -1,0 +1,492 @@
+openapi: 3.0.0
+info:
+  title: Email Verification and Password Recovery API
+  version: 1.0.0
+  description: API endpoints for email verification and password recovery flows in Mobile Messenger
+  contact:
+    name: Mobile Messenger Team
+
+servers:
+  - url: http://localhost:8081/auth
+    description: Development server
+  - url: https://api.messenger.example.com/auth
+    description: Production server
+
+tags:
+  - name: Verification
+    description: Email verification endpoints for new user accounts
+  - name: PasswordRecovery
+    description: Password recovery and reset endpoints
+
+paths:
+  /send-verification-email:
+    post:
+      tags:
+        - Verification
+      summary: Send verification email to user
+      description: |
+        (Re)send email verification link to user's registered email.
+        Authenticated endpoint - requires valid JWT token from login.
+        Idempotent - can be called multiple times safely.
+        Rate limited - max 5 requests per user per hour.
+        Used after registration to trigger verification email if not received initially.
+      operationId: sendVerificationEmail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendVerificationRequest'
+            example:
+              user_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+      responses:
+        '200':
+          description: Verification email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+        '400':
+          description: Bad request - user already verified or invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "User email already verified"
+        '401':
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Invalid or expired JWT token"
+        '429':
+          description: Too Many Requests - rate limit exceeded (5 per hour)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitResponse'
+        '500':
+          description: Internal server error - email service failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /verify-email:
+    post:
+      tags:
+        - Verification
+      summary: Verify email address using token
+      description: |
+        Verify user's email by consuming verification token sent via email.
+        Public endpoint - no authentication required.
+        Token must be valid and not expired (24 hour window from generation).
+        Single-use - token consumed on successful verification (cannot be reused).
+        Called when user clicks verification link in email.
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+            example:
+              token: "nV7Zq1_pK2mX8bYc3dEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOp"
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyEmailResponse'
+        '400':
+          description: Bad request - invalid, expired, or already-used token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                expired:
+                  value:
+                    success: false
+                    error: "Verification token has expired"
+                invalid:
+                  value:
+                    success: false
+                    error: "Invalid verification token"
+                alreadyUsed:
+                  value:
+                    success: false
+                    error: "Token already used"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /send-password-reset-email:
+    post:
+      tags:
+        - PasswordRecovery
+      summary: Request password reset email
+      description: |
+        Send password reset link to email address (if account exists).
+        Public endpoint - no authentication required.
+        Returns identical response whether email exists or not (user enumeration prevention).
+        Rate limited - max 5 requests per email per 1-hour sliding window.
+        Called from "Forgot Password" flow on login screen.
+      operationId: sendPasswordResetEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRecoveryRequest'
+            example:
+              email: "alice@example.com"
+      responses:
+        '200':
+          description: Password reset email queued (whether user exists or not)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+        '400':
+          description: Bad request - invalid email format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: "Invalid email format"
+        '429':
+          description: Too Many Requests - rate limit exceeded for this email (5 per hour)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitResponse'
+        '500':
+          description: Internal server error - email service failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reset-password:
+    post:
+      tags:
+        - PasswordRecovery
+      summary: Reset password using token
+      description: |
+        Update user password using password reset token.
+        Public endpoint - requires valid reset token (not JWT).
+        Token must be valid and not expired (24 hour window from generation).
+        Single-use - token consumed on successful password change (cannot be reused).
+        Invalidates all existing sessions for user (forces re-login).
+        Sends confirmation email notification to user.
+        Called when user enters new password after clicking reset link.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: "nV7Zq1_pK2mX8bYc3dEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOp"
+              new_password: "SecurePassword123!"
+              confirm_password: "SecurePassword123!"
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetPasswordResponse'
+        '400':
+          description: Bad request - invalid token, expired token, passwords don't match, or password validation failure
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/PasswordValidationErrorResponse'
+              examples:
+                expiredToken:
+                  value:
+                    success: false
+                    error: "Password reset token has expired"
+                invalidToken:
+                  value:
+                    success: false
+                    error: "Invalid password reset token"
+                passwordMismatch:
+                  value:
+                    success: false
+                    error: "Passwords do not match"
+                weakPassword:
+                  value:
+                    success: false
+                    error: "Password does not meet strength requirements"
+                    validation_details:
+                      length: "Password must be at least 8 characters"
+                      uppercase: "Password must contain an uppercase letter"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from authentication endpoint (/auth/login)
+
+  schemas:
+    SendVerificationRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: User ID from JWT token (identifies authenticated user)
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+    VerifyEmailRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: 32-byte verification token from email link (Base64URL encoded, no padding)
+          example: "nV7Zq1_pK2mX8bYc3dEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOp"
+
+    PasswordRecoveryRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address to send reset link to
+          example: "alice@example.com"
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - new_password
+        - confirm_password
+      properties:
+        token:
+          type: string
+          description: Password reset token from email link
+          example: "nV7Zq1_pK2mX8bYc3dEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOp"
+        new_password:
+          type: string
+          minLength: 8
+          description: New password (must meet strength requirements - 8+ chars, upper, lower, digit, special)
+          example: "SecurePassword123!"
+        confirm_password:
+          type: string
+          minLength: 8
+          description: Password confirmation (must match new_password exactly)
+          example: "SecurePassword123!"
+
+    VerificationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Verification email sent"
+        resend_after_seconds:
+          type: integer
+          description: Optional - seconds to wait before allowing resend (rate limit info)
+          example: 60
+
+    VerifyEmailResponse:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Email verified successfully"
+        user:
+          $ref: '#/components/schemas/UserData'
+
+    GenericResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: Generic message (user enumeration prevention - same for existing/non-existing emails)
+          example: "If email is registered, password reset link will be sent"
+
+    ResetPasswordResponse:
+      type: object
+      required:
+        - success
+        - message
+        - user
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Password reset successfully. Please log in with your new password."
+        user:
+          $ref: '#/components/schemas/UserData'
+
+    UserData:
+      type: object
+      required:
+        - id
+        - email
+        - email_verified
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "alice@example.com"
+        email_verified:
+          type: boolean
+          description: Whether email is verified
+          example: true
+        verified_at:
+          type: string
+          format: date-time
+          description: ISO8601 timestamp when email was verified (null if not verified)
+          example: "2026-03-11T12:34:56Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message describing what went wrong
+          example: "Invalid or expired verification token"
+
+    PasswordValidationErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+        - validation_details
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Password does not meet strength requirements"
+        validation_details:
+          type: object
+          description: Specific validation failures (each key is absent if requirement met)
+          properties:
+            length:
+              type: string
+              example: "Password must be at least 8 characters"
+            uppercase:
+              type: string
+              example: "Password must contain an uppercase letter"
+            lowercase:
+              type: string
+              example: "Password must contain a lowercase letter"
+            digit:
+              type: string
+              example: "Password must contain a digit"
+            special:
+              type: string
+              example: "Password must contain a special character"
+
+    RateLimitResponse:
+      type: object
+      required:
+        - success
+        - error
+        - retry_after_seconds
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Rate limit error message with wait time
+          example: "Too many password reset requests. Please wait 42 minutes before trying again."
+        retry_after_seconds:
+          type: integer
+          description: Seconds to wait before retrying (also returned in Retry-After header)
+          example: 2520
+
+    ValidationError:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: "password"
+        message:
+          type: string
+          description: Validation error message
+          example: "Password must contain at least one special character"

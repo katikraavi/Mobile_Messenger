@@ -1,0 +1,76 @@
+# Database Contract: Chat Entity
+
+**Feature**: 002-core-db-models  
+**Entity**: Chat  
+**Status**: Design Complete
+
+## Schema Contract
+
+```sql
+CREATE TABLE chat (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  archived_by_users BIGINT[] DEFAULT '{}'::BIGINT[] NOT NULL
+);
+
+CREATE INDEX idx_chat_created_at ON chat(created_at DESC);
+```
+
+## API/Model Contract (Dart)
+
+```dart
+class Chat {
+  final String id;  // UUID
+  final DateTime createdAt;
+  final List<String> archivedByUserIds;  // List of user IDs who archived
+  
+  Chat({
+    required this.id,
+    required this.createdAt,
+    this.archivedByUserIds = const [],
+  });
+  
+  bool isArchivedBy(String userId) => archivedByUserIds.contains(userId);
+  
+  Chat copyWith({
+    List<String>? archivedByUserIds,
+  }) => Chat(
+    id: id,
+    createdAt: createdAt,
+    archivedByUserIds: archivedByUserIds ?? this.archivedByUserIds,
+  );
+}
+
+extension ChatSerialization on Chat {
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'archivedByUserIds': archivedByUserIds,
+  };
+  
+  static Chat fromJson(Map<String, dynamic> json) => Chat(
+    id: json['id'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    archivedByUserIds: List<String>.from(json['archivedByUserIds'] as List? ?? []),
+  );
+}
+```
+
+## Validation Rules
+
+- **id**: UUID (auto-generated)
+- **created_at**: Auto-set to current timestamp, immutable
+- **archived_by_users**: Array of user IDs (integers or UUIDs stored as bigint)
+
+## Access Patterns
+
+1. **Chat details**: `SELECT * FROM chat WHERE id = $1`
+2. **User's active chats**: `SELECT * FROM chat_member WHERE user_id = $1 AND chat_id NOT IN (SELECT chat_id FROM chat WHERE $1 = ANY(archived_by_users))`
+3. **Archive chat**: `UPDATE chat SET archived_by_users = array_append(archived_by_users, $1) WHERE id = $2`
+4. **Unarchive chat**: `UPDATE chat SET archived_by_users = array_remove(archived_by_users, $1) WHERE id = $2`
+
+## Design Notes
+
+- No explicit name field; chat name managed by application (stored in first message or shared settings)
+- No explicit "last_message" denormalization; query messages table when needed
+- archived_by_users enables per-user archival (different than "deleted")

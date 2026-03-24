@@ -1,0 +1,83 @@
+# Database Contract: User Entity
+
+**Feature**: 002-core-db-models  
+**Entity**: User  
+**Status**: Design Complete
+
+## Schema Contract
+
+```sql
+CREATE TABLE "user" (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  email_verified BOOLEAN DEFAULT false NOT NULL,
+  profile_picture_url TEXT,
+  about_me TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  
+  CONSTRAINT email_format CHECK (email LIKE '%@%.%'),
+  CONSTRAINT username_length CHECK (LENGTH(username) >= 3)
+);
+
+CREATE INDEX idx_user_email ON "user"(email);
+CREATE INDEX idx_user_username ON "user"(username);
+CREATE INDEX idx_user_created_at ON "user"(created_at DESC);
+```
+
+## API/Model Contract (Dart)
+
+```dart
+class User {
+  final String id;  // UUID
+  final String email;
+  final String username;
+  final String passwordHash;
+  final bool emailVerified;
+  final String? profilePictureUrl;
+  final String? aboutMe;
+  final DateTime createdAt;
+  
+  // Constructor, equality, toString omitted for brevity
+}
+
+// Serialization to/from JSON for API responses
+extension UserSerialization on User {
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'email': email,
+    'username': username,
+    'emailVerified': emailVerified,
+    'profilePictureUrl': profilePictureUrl,
+    'aboutMe': aboutMe,
+    'createdAt': createdAt.toIso8601String(),
+  };
+  
+  static User fromJson(Map<String, dynamic> json) => User(
+    id: json['id'] as String,
+    email: json['email'] as String,
+    username: json['username'] as String,
+    passwordHash: json['passwordHash'] as String,
+    emailVerified: json['emailVerified'] as bool? ?? false,
+    profilePictureUrl: json['profilePictureUrl'] as String?,
+    aboutMe: json['aboutMe'] as String?,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+  );
+}
+```
+
+## Validation Rules
+
+- **email**: 255 chars max, format '%@%.%', UNIQUE
+- **username**: 3-50 chars, UNIQUE, alphanumeric + underscore allowed
+- **password_hash**: Never returned in API, never logged
+- **profile_picture_url**: Optional, must be valid S3/storage URL
+- **about_me**: Optional, max 500 chars
+
+## Access Patterns
+
+1. **Authentication**: `SELECT * FROM "user" WHERE email = $1` (index: email)
+2. **Username search**: `SELECT * FROM "user" WHERE username ILIKE $1` (index: username)
+3. **User profile**: `SELECT id, username, profilePictureUrl, aboutMe, createdAt FROM "user" WHERE id = $1`
+4. **Recent users**: `SELECT * FROM "user" ORDER BY createdAt DESC LIMIT 10` (index: created_at)

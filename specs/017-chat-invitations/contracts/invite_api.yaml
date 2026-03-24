@@ -1,0 +1,384 @@
+openapi: 3.0.3
+info:
+  title: Chat Invitations API
+  version: 1.0.0
+  description: APIs for sending, accepting, and declining chat invitations
+  contact:
+    name: Mobile Messenger Team
+
+servers:
+  - url: http://localhost:8080/api
+    description: Development server
+  - url: https://api.messenger.app/api
+    description: Production server
+
+paths:
+  /invites/send:
+    post:
+      summary: Send a new chat invitation
+      operationId: sendInvite
+      tags:
+        - Invitations
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - recipientId
+              properties:
+                recipientId:
+                  type: string
+                  format: uuid
+                  description: ID of user to invite
+                  example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      responses:
+        201:
+          description: Invitation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatInviteResponse'
+        400:
+          description: Bad request (already chatting, self-invite, duplicate pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        404:
+          description: Recipient user not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        409:
+          description: Duplicate pending invitation exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /invites/pending:
+    get:
+      summary: Get pending invitations received by current user
+      operationId: getPendingInvites
+      tags:
+        - Invitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Maximum number of invites to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Pagination offset
+      responses:
+        200:
+          description: List of pending invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatInviteResponse'
+                  total:
+                    type: integer
+                    description: Total count of pending invites
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /invites/sent:
+    get:
+      summary: Get invitations sent by current user
+      operationId: getSentInvites
+      tags:
+        - Invitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        200:
+          description: List of sent invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatInviteResponse'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /invites/{inviteId}/accept:
+    post:
+      summary: Accept a pending invitation
+      operationId: acceptInvite
+      tags:
+        - Invitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of invitation to accept
+      responses:
+        200:
+          description: Invitation accepted, chat created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invite:
+                    $ref: '#/components/schemas/ChatInviteResponse'
+                  chat:
+                    $ref: '#/components/schemas/ChatResponse'
+        400:
+          description: Invalid invite status (not pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        403:
+          description: Forbidden (not recipient of invite)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        404:
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /invites/{inviteId}/decline:
+    post:
+      summary: Decline a pending invitation
+      operationId: declineInvite
+      tags:
+        - Invitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of invitation to decline
+      responses:
+        200:
+          description: Invitation declined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatInviteResponse'
+        400:
+          description: Invalid invite status (not pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        403:
+          description: Forbidden (not recipient of invite)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        404:
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from authentication endpoint
+
+  schemas:
+    ChatInviteResponse:
+      type: object
+      required:
+        - id
+        - senderId
+        - senderName
+        - senderAvatarUrl
+        - recipientId
+        - recipientName
+        - recipientAvatarUrl
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique invitation ID
+        senderId:
+          type: string
+          format: uuid
+          description: ID of user who sent invitation
+        senderName:
+          type: string
+          description: Name of user who sent invitation
+        senderAvatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Avatar URL of sender
+        recipientId:
+          type: string
+          format: uuid
+          description: ID of user who received invitation
+        recipientName:
+          type: string
+          description: Name of user who received invitation
+        recipientAvatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Avatar URL of recipient
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - declined
+          description: Current status of invitation
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when invitation was sent
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when status was last updated
+
+    ChatResponse:
+      type: object
+      required:
+        - id
+        - participants
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique chat ID
+        participants:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Array of user IDs in chat
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when chat was created
+        inviteId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of invitation that created this chat
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code or type
+          example: "DUPLICATE_PENDING_INVITE"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "You already have a pending invitation to this user"
+        details:
+          type: object
+          nullable: true
+          description: Additional error context
+          additionalProperties: true
+
+tags:
+  - name: Invitations
+    description: Operations for managing chat invitations

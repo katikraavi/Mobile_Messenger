@@ -1,0 +1,114 @@
+# Database Contract: Invite Entity
+
+**Feature**: 002-core-db-models  
+**Entity**: Invite  
+**Status**: Design Complete
+
+## Schema Contract
+
+```sql
+CREATE TYPE invite_status AS ENUM ('pending', 'accepted', 'declined');
+
+CREATE TABLE invite (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  receiver_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  status invite_status DEFAULT 'pending' NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  responded_at TIMESTAMP WITH TIME ZONE,
+  
+  CONSTRAINT receiver_not_sender CHECK (sender_id != receiver_id),
+  CONSTRAINT responded_after_created CHECK (responded_at IS NULL OR responded_at >= created_at),
+  UNIQUE(sender_id, receiver_id, status) WHERE status = 'pending'
+);
+
+CREATE INDEX idx_invite_receiver ON invite(receiver_id, status);
+CREATE INDEX idx_invite_sender ON invite(sender_id, created_at DESC);
+CREATE INDEX idx_invite_status ON invite(status, created_at DESC);
+```
+
+## API/Model Contract (Dart)
+
+```dart
+enum InviteStatus { pending, accepted, declined }
+
+class Invite {
+  final String id;  // UUID
+  final String senderId;
+  final String receiverId;
+  final InviteStatus status;
+  final DateTime createdAt;
+  final DateTime? respondedAt;
+  
+  Invite({
+    required this.id,
+    required this.senderId,
+    required this.receiverId,
+    this.status = InviteStatus.pending,
+    required this.createdAt,
+    this.respondedAt,
+  });
+  
+  bool get isPending => status == InviteStatus.pending;
+  bool get isAccepted => status == InviteStatus.accepted;
+  bool get isDeclined => status == InviteStatus.declined;
+  
+  Invite copyWith({
+    InviteStatus? status,
+    DateTime? respondedAt,
+  }) => Invite(
+    id: id,
+    senderId: senderId,
+    receiverId: receiverId,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    respondedAt: respondedAt ?? this.respondedAt,
+  );
+}
+
+extension InviteSerialization on Invite {
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'senderId': senderId,
+    'receiverId': receiverId,
+    'status': status.name,
+    'createdAt': createdAt.toIso8601String(),
+    'respondedAt': respondedAt?.toIso8601String(),
+  };
+  
+  static Invite fromJson(Map<String, dynamic> json) => Invite(
+    id: json['id'] as String,
+    senderId: json['senderId'] as String,
+    receiverId: json['receiverId'] as String,
+    status: InviteStatus.values.byName(json['status'] as String),
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    respondedAt: json['respondedAt'] != null ? DateTime.parse(json['respondedAt'] as String) : null,
+  );
+}
+```
+
+## Validation Rules
+
+- **sender_id**: UUID, must be different from receiver_id
+- **receiver_id**: UUID, must be different from sender_id
+- **status**: One of (pending, accepted, declined)
+- **created_at**: Immutable, UTC timestamp (auto-set)
+- **responded_at**: Set when status changes from pending to (accepted|declined), >= created_at
+- **Uniqueness**: Only one pending invitation per (sender, receiver) pair
+
+## Access Patterns
+
+1. **Pending invitations for user**: `SELECT * FROM invite WHERE receiver_id = $1 AND status = 'pending' ORDER BY created_at DESC` (index: receiver_id, status)
+2. **Accept invitation**: `UPDATE invite SET status = 'accepted', responded_at = NOW() WHERE id = $1 AND receiver_id = $2`
+3. **Decline invitation**: `UPDATE invite SET status = 'declined', responded_at = NOW() WHERE id = $1 AND receiver_id = $2`
+4. **Check existing invitation**: `SELECT * FROM invite WHERE sender_id = $1 AND receiver_id = $2 AND status = 'pending'`
+5. **Invitations sent by user**: `SELECT * FROM invite WHERE sender_id = $1 ORDER BY created_at DESC LIMIT 50`
+6. **Invitation history**: `SELECT * FROM invite WHERE (sender_id = $1 OR receiver_id = $1) ORDER BY created_at DESC`
+
+## Design Notes
+
+- Unique constraint only on pending status: allows re-sending invitation after decline
+- UNIQUE(sender_id, receiver_id, status) WHERE status = 'pending' prevents duplicate pending invites
+- No "blocked" or "muted" states in v1 (future enhancement)
+- responded_at tracks when action was taken for UI display ("Accepted 2 hours ago")
+- Accepted invitations create implicit "friend" relationship (stored as successful chat)

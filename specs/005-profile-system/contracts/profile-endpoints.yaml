@@ -1,0 +1,408 @@
+openapi: 3.0.0
+info:
+  title: User Profile Management API
+  version: 1.0.0
+  description: API endpoints for user profile viewing, editing, and profile picture management
+
+servers:
+  - url: http://localhost:8081/profile
+    description: Development server
+  - url: https://api.messenger.example.com/profile
+    description: Production server
+
+paths:
+  /view/{userId}:
+    get:
+      summary: Get user profile information
+      description: |
+        Retrieve a user's public profile or own profile.
+        
+        **Authorization**:
+        - Public profiles (is_private_profile = false): Anyone can view without authentication
+        - Private profiles (is_private_profile = true): Only the profile owner can view
+        
+        **Response includes**:
+        - Username, bio, profile picture URL
+        - Privacy setting
+        - Last updated timestamp
+      operationId: getUserProfile
+      tags:
+        - Profile Viewing
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User ID of the profile to view
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '403':
+          description: Forbidden - Private profile, not owned by requester
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found - User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /edit:
+    patch:
+      summary: Update user profile information
+      description: |
+        Update authenticated user's profile (username, bio, privacy setting).
+        
+        **Authentication**: Required (Bearer token in Authorization header)
+        
+        **Fields updated**:
+        - `username`: 3-32 characters, alphanumeric + underscore
+        - `aboutMe`: 0-500 characters (optional; can be empty)
+        - `isPrivateProfile`: Boolean (0 or 1 for true/false)
+        
+        **Save button logic**: User can only save if at least one field differs from current value
+      operationId: updateProfile
+      tags:
+        - Profile Editing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          description: Bad Request - Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Missing or invalid JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - No changes detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /picture/upload:
+    post:
+      summary: Upload profile picture
+      description: |
+        Upload and process profile picture for authenticated user.
+        
+        **File Requirements**:
+        - Format: JPEG (.jpg, .jpeg) or PNG (.png) only
+        - Size: 1 byte minimum, 5 MB maximum
+        - Dimensions: 100x100 to 5000x5000 pixels
+        
+        **Server Processing**:
+        - Detect image format and validate
+        - Decode and validate dimensions
+        - Center crop to square
+        - Resize to 500x500 pixels
+        - Compress to 85% JPEG quality
+        - Save to filesystem (/uploads/profiles/)
+        
+        **Response**:
+        - Returns new profile picture URL
+        - Updates User.profile_picture_url
+        - Sets is_default_profile_picture = false
+        - Creates ProfileImage audit record
+        
+        **Error Handling**:
+        - Format errors: HTTP 400 with specific message
+        - Size errors: HTTP 413 with specific message
+        - Dimension errors: HTTP 400 with specific message
+        - Server errors: HTTP 500 with generic message
+      operationId: uploadProfilePicture
+      tags:
+        - Profile Picture
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadPictureRequest'
+      responses:
+        '200':
+          description: Profile picture uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadPictureResponse'
+        '400':
+          description: Bad Request - File format or dimensions invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Missing or invalid JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '408':
+          description: Request Timeout - Upload took too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Payload Too Large - File exceeds 5 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - file processing or storage failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /picture/remove:
+    delete:
+      summary: Remove profile picture (revert to default)
+      description: |
+        Delete user's custom profile picture and revert to default.
+        
+        **Authorization**: Authenticated user only
+        
+        **Effect**:
+        - Soft-delete ProfileImage record (set deleted_at timestamp)
+        - Sets User.is_default_profile_picture = true
+        - Clears User.profile_picture_url to NULL
+        - Default avatar displays immediately
+        
+        **Idempotent**: Safe to call multiple times (returns 200 if already using default)
+      operationId: removeProfilePicture
+      tags:
+        - Profile Picture
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile picture removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemovePictureResponse'
+        '400':
+          description: Bad Request - User already using default picture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Missing or invalid JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login endpoint
+
+  schemas:
+    ProfileResponse:
+      type: object
+      required:
+        - id
+        - username
+        - email
+        - profilePictureUrl
+        - aboutMe
+        - isPrivateProfile
+        - isDefaultProfilePicture
+        - profileUpdatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          example: john_doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        profilePictureUrl:
+          type: string
+          nullable: true
+          example: /uploads/profiles/user-abc123-1234567890.jpg
+          description: Relative path to profile picture, or null if using default
+        aboutMe:
+          type: string
+          maxLength: 500
+          example: Software developer in San Francisco
+          description: User bio or status message
+        isPrivateProfile:
+          type: boolean
+          example: false
+          description: True if profile is private (only owner can view)
+        isDefaultProfilePicture:
+          type: boolean
+          example: false
+          description: True if using default avatar
+        profileUpdatedAt:
+          type: string
+          format: date-time
+          example: 2026-03-11T14:30:45.123456Z
+          description: ISO 8601 timestamp of last profile update
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[a-zA-Z0-9_]+$'
+          example: john_doe
+          description: Optional - if provided, must be 3-32 alphanumeric + underscore
+        aboutMe:
+          type: string
+          maxLength: 500
+          example: Software developer
+          description: Optional - can be empty string to clear bio
+        isPrivateProfile:
+          type: boolean
+          example: false
+          description: Optional - true for private, false for public
+
+    UploadPictureRequest:
+      type: object
+      required:
+        - picture
+      properties:
+        picture:
+          type: string
+          format: binary
+          description: Image file (JPEG or PNG, max 5MB, between 100x100 and 5000x5000 pixels)
+
+    UploadPictureResponse:
+      type: object
+      required:
+        - profilePictureUrl
+        - isDefaultProfilePicture
+        - profileUpdatedAt
+      properties:
+        profilePictureUrl:
+          type: string
+          example: /uploads/profiles/user-abc123-1234567890.jpg
+          description: New profile picture URL (relative path)
+        isDefaultProfilePicture:
+          type: boolean
+          example: false
+        profileUpdatedAt:
+          type: string
+          format: date-time
+          example: 2026-03-11T14:30:45.123456Z
+        message:
+          type: string
+          example: Profile picture updated successfully
+
+    RemovePictureResponse:
+      type: object
+      required:
+        - isDefaultProfilePicture
+        - profileUpdatedAt
+      properties:
+        isDefaultProfilePicture:
+          type: boolean
+          example: true
+        profileUpdatedAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+          example: Profile picture removed
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          enum:
+            - INVALID_FORMAT
+            - FILE_TOO_LARGE
+            - INVALID_DIMENSIONS
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - CONFLICT
+            - INTERNAL_ERROR
+            - TIMEOUT
+          example: INVALID_FORMAT
+        message:
+          type: string
+          example: Only JPEG and PNG formats are supported
+        statusCode:
+          type: integer
+          example: 400
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-03-11T14:30:45.123456Z
+
+tags:
+  - name: Profile Viewing
+    description: Retrieve user profile information
+  - name: Profile Editing
+    description: Update user profile information (authenticated)
+  - name: Profile Picture
+    description: Upload, view, and remove profile pictures (authenticated)

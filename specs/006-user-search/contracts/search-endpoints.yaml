@@ -1,0 +1,215 @@
+openapi: 3.0.0
+info:
+  title: User Search API (Spec 006)
+  version: 1.0.0
+  description: Search for users by username or email address
+
+servers:
+  - url: http://localhost:8081
+    description: Local development server
+  - url: https://api.messenger.app
+    description: Production server
+
+paths:
+  /search/username:
+    get:
+      operationId: searchByUsername
+      summary: Search users by username
+      description: Case-insensitive search for users by username. Requires authentication. Returns only verified users.
+      tags:
+        - Search
+      parameters:
+        - name: q
+          in: query
+          description: Search query (username prefix or partial match)
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          example: alice
+        - name: limit
+          in: query
+          description: Maximum number of results (default 10, max 100)
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          example: 10
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Search successful, returns list of matching users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserSearchResult'
+              example:
+                - userId: "123e4567-e89b-12d3-a456-426614174000"
+                  username: "alice"
+                  email: "alice@example.com"
+                  profilePictureUrl: "/uploads/profiles/alice-1234567890.jpg"
+                  isPrivateProfile: false
+                - userId: "123e4567-e89b-12d3-a456-426614174001"
+                  username: "alice_smith"
+                  email: "alice.smith@example.com"
+                  profilePictureUrl: null
+                  isPrivateProfile: false
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Query must be between 1 and 100 characters"
+        '401':
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unable to process search"
+
+  /search/email:
+    get:
+      operationId: searchByEmail
+      summary: Search users by email address
+      description: Case-insensitive search for users by email address. Prioritizes exact matches. Requires authentication. Returns only verified users.
+      tags:
+        - Search
+      parameters:
+        - name: q
+          in: query
+          description: Search query (email prefix or partial match, must contain @)
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 100
+            format: email-partial
+          example: alice@
+        - name: limit
+          in: query
+          description: Maximum number of results (default 10, max 100)
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          example: 10
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Search successful, returns list of matching email addresses. Exact matches prioritized.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserSearchResult'
+              example:
+                - userId: "123e4567-e89b-12d3-a456-426614174000"
+                  username: "alice"
+                  email: "alice@example.com"
+                  profilePictureUrl: "/uploads/profiles/alice-1234567890.jpg"
+                  isPrivateProfile: false
+                - userId: "123e4567-e89b-12d3-a456-426614174002"
+                  username: "bob_alice"
+                  email: "bob@alice-mail.com"
+                  profilePictureUrl: null
+                  isPrivateProfile: true
+        '400':
+          description: Invalid query parameter (not valid email format or invalid length)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Invalid email format"
+        '401':
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unauthorized"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "Unable to process search"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from user authentication (Spec 003)
+
+  schemas:
+    UserSearchResult:
+      type: object
+      required:
+        - userId
+        - username
+        - email
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        username:
+          type: string
+          description: User's username
+          example: "alice"
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: "alice@example.com"
+        profilePictureUrl:
+          type: string
+          nullable: true
+          description: Relative URL to user's profile picture, or null if default avatar
+          example: "/uploads/profiles/alice-1234567890.jpg"
+        isPrivateProfile:
+          type: boolean
+          description: Whether user's profile is private (true) or public (false)
+          example: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Query must be between 1 and 100 characters"
+
+tags:
+  - name: Search
+    description: User search endpoints

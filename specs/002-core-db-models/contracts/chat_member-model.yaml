@@ -1,0 +1,93 @@
+# Database Contract: ChatMember Entity
+
+**Feature**: 002-core-db-models  
+**Entity**: ChatMember  
+**Status**: Design Complete
+
+## Schema Contract
+
+```sql
+CREATE TABLE chat_member (
+  user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  chat_id UUID NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  left_at TIMESTAMP WITH TIME ZONE,
+  
+  PRIMARY KEY (user_id, chat_id),
+  CONSTRAINT left_after_joined CHECK (left_at IS NULL OR left_at > joined_at)
+);
+
+CREATE INDEX idx_chat_member_user ON chat_member(user_id, joined_at DESC);
+CREATE INDEX idx_chat_member_chat ON chat_member(chat_id, joined_at DESC);
+CREATE INDEX idx_chat_member_left_null ON chat_member(left_at) WHERE left_at IS NULL;
+```
+
+## API/Model Contract (Dart)
+
+```dart
+class ChatMember {
+  final String userId;
+  final String chatId;
+  final DateTime joinedAt;
+  final DateTime? leftAt;
+  
+  ChatMember({
+    required this.userId,
+    required this.chatId,
+    required this.joinedAt,
+    this.leftAt,
+  });
+  
+  bool get isActive => leftAt == null;
+  
+  ChatMember copyWith({
+    DateTime? leftAt,
+  }) => ChatMember(
+    userId: userId,
+    chatId: chatId,
+    joinedAt: joinedAt,
+    leftAt: leftAt ?? this.leftAt,
+  );
+}
+
+extension ChatMemberSerialization on ChatMember {
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'chatId': chatId,
+    'joinedAt': joinedAt.toIso8601String(),
+    'leftAt': leftAt?.toIso8601String(),
+  };
+  
+  static ChatMember fromJson(Map<String, dynamic> json) => ChatMember(
+    userId: json['userId'] as String,
+    chatId: json['chatId'] as String,
+    joinedAt: DateTime.parse(json['joinedAt'] as String),
+    leftAt: json['leftAt'] != null ? DateTime.parse(json['leftAt'] as String) : null,
+  );
+}
+```
+
+## Validation Rules
+
+- **user_id**: UUID, must exist in User table
+- **chat_id**: UUID, must exist in Chat table
+- **joined_at**: Immutable, UTC timestamp (auto-set on join)
+- **left_at**: Optional, only set when user leaves chat, must be > joined_at
+- **Composite PK**: (user_id, chat_id) ensures one membership per user per chat
+
+## Access Patterns
+
+1. **User's active chats**: `SELECT c.* FROM chat c JOIN chat_member cm ON c.id = cm.chat_id WHERE cm.user_id = $1 AND cm.left_at IS NULL` (index: user_id, left_at)
+2. **Chat members (active)**: `SELECT u.* FROM "user" u JOIN chat_member cm ON u.id = cm.user_id WHERE cm.chat_id = $1 AND cm.left_at IS NULL ORDER BY cm.joined_at DESC`
+3. **Add member to chat**: `INSERT INTO chat_member (user_id, chat_id) VALUES ($1, $2)`
+4. **Remove member (soft)**: `UPDATE chat_member SET left_at = NOW() WHERE user_id = $1 AND chat_id = $2`
+5. **Chat history (all members)**: `SELECT * FROM chat_member WHERE chat_id = $1 ORDER BY joined_at DESC` (for audit/analytics)
+6. **User's chat history**: `SELECT * FROM chat_member WHERE user_id = $1 ORDER BY joined_at DESC`
+
+## Design Notes
+
+- Composite primary key (user_id, chat_id) prevents duplicate memberships
+- left_at enables soft-delete: user can leave and rejoin preserving history
+- Active membership filtering uses `WHERE left_at IS NULL` (index covered)
+- No "role" or "admin" field in v1 (future enhancement for group admin)
+- Cascade delete ensures clean data when user or chat deleted

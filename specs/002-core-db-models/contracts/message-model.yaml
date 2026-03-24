@@ -1,0 +1,129 @@
+# Database Contract: Message Entity
+
+**Feature**: 002-core-db-models  
+**Entity**: Message  
+**Status**: Design Complete
+
+## Schema Contract
+
+```sql
+CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read');
+
+CREATE TABLE message (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID NOT NULL REFERENCES chat(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+  encrypted_content TEXT NOT NULL,
+  media_url TEXT,
+  media_type VARCHAR(20),
+  status message_status DEFAULT 'sent' NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+  edited_at TIMESTAMP WITH TIME ZONE,
+  
+  CONSTRAINT message_status_valid CHECK (status IN ('sent', 'delivered', 'read')),
+  CONSTRAINT media_type_valid CHECK (media_type IN ('image', 'video', 'audio', 'file') OR media_type IS NULL),
+  CONSTRAINT edited_at_after_created CHECK (edited_at IS NULL OR edited_at >= created_at)
+);
+
+CREATE INDEX idx_message_chat_created ON message(chat_id, created_at DESC);
+CREATE INDEX idx_message_sender ON message(sender_id, created_at DESC);
+CREATE INDEX idx_message_status ON message(status, created_at DESC);
+CREATE INDEX idx_message_created_at ON message(created_at DESC);
+```
+
+## API/Model Contract (Dart)
+
+```dart
+enum MessageStatus { sent, delivered, read }
+
+class Message {
+  final String id;  // UUID
+  final String chatId;
+  final String senderId;
+  final String encryptedContent;  // Never decrypted in plain text in logs
+  final String? mediaUrl;
+  final String? mediaType;
+  final MessageStatus status;
+  final DateTime createdAt;
+  final DateTime? editedAt;
+  
+  Message({
+    required this.id,
+    required this.chatId,
+    required this.senderId,
+    required this.encryptedContent,
+    this.mediaUrl,
+    this.mediaType,
+    this.status = MessageStatus.sent,
+    required this.createdAt,
+    this.editedAt,
+  });
+  
+  bool isEdited => editedAt != null;
+  
+  Message copyWith({
+    MessageStatus? status,
+    DateTime? editedAt,
+  }) => Message(
+    id: id,
+    chatId: chatId,
+    senderId: senderId,
+    encryptedContent: encryptedContent,
+    mediaUrl: mediaUrl,
+    mediaType: mediaType,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    editedAt: editedAt ?? this.editedAt,
+  );
+}
+
+extension MessageSerialization on Message {
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'chatId': chatId,
+    'senderId': senderId,
+    'encryptedContent': encryptedContent,
+    'mediaUrl': mediaUrl,
+    'mediaType': mediaType,
+    'status': status.name,
+    'createdAt': createdAt.toIso8601String(),
+    'editedAt': editedAt?.toIso8601String(),
+  };
+  
+  static Message fromJson(Map<String, dynamic> json) => Message(
+    id: json['id'] as String,
+    chatId: json['chatId'] as String,
+    senderId: json['senderId'] as String,
+    encryptedContent: json['encryptedContent'] as String,
+    mediaUrl: json['mediaUrl'] as String?,
+    mediaType: json['mediaType'] as String?,
+    status: MessageStatus.values.byName(json['status'] as String),
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    editedAt: json['editedAt'] != null ? DateTime.parse(json['editedAt'] as String) : null,
+  );
+}
+```
+
+## Validation Rules
+
+- **encrypted_content**: Never empty, always encrypted before DB insert
+- **media_url**: Optional, must start with s3:// or https://
+- **media_type**: One of (image, video, audio, file) or null
+- **status**: One of (sent, delivered, read)
+- **created_at**: Immutable, UTC timestamp
+- **edited_at**: Only set when message is edited, >= created_at
+
+## Access Patterns
+
+1. **Messages in chat (paginated)**: `SELECT * FROM message WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 50 OFFSET $2` (index: chat_id, created_at)
+2. **Update message status**: `UPDATE message SET status = $1 WHERE id = $2` (primary key lookup)
+3. **Edit message**: `UPDATE message SET encrypted_content = $1, edited_at = NOW() WHERE id = $2 AND sender_id = $3`
+4. **User's sent messages**: `SELECT * FROM message WHERE sender_id = $1 ORDER BY created_at DESC LIMIT 100`
+5. **Messages by status**: `SELECT COUNT(*) FROM message WHERE status = 'sent' AND created_at > $1`
+
+## Design Notes
+
+- encrypted_content encryption/decryption handled by Dart application layer (cryptography package)
+- No full-text search index; search implemented at application layer post-decryption
+- Status valid transitions enforced by application (sent → delivered → read)
+- media_url is storage path only; client constructs full URL for retrieval
