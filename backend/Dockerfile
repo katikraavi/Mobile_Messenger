@@ -5,7 +5,6 @@ WORKDIR /build
 
 # Copy pubspec files
 COPY pubspec.yaml pubspec.yaml
-COPY pubspec.lock pubspec.lock
 
 # Get dependencies
 RUN dart pub get

@@ -143,6 +143,8 @@ Thumbs.db
 
 # Exceptions to above rules.
 !/packages/flutter_tools/test/data/dart_dependencies_test/.packages
+!backend/pubspec.lock
+!frontend/pubspec.lock
 
 # Database
 *.db
