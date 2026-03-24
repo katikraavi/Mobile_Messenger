@@ -29,7 +29,9 @@ RUN dart pub get
 
 # Copy source code
 COPY --from=builder /build/lib /app/lib
-COPY --from=builder /build/config /app/config
+
+# Ensure expected runtime directories exist even when source folders are empty.
+RUN mkdir -p /app/config /app/uploads
 
 # Expose port
 EXPOSE 8081
