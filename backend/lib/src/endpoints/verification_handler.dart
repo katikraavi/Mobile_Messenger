@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:shelf/shelf.dart';
@@ -91,8 +92,14 @@ Future<Response> sendVerificationEmail(
       expiresIn: '24 hours',
     );
 
-    // Send email and fail the request if SMTP delivery fails.
-    await emailService.sendEmail(emailMessage);
+    // Send email asynchronously in background (don't wait for SMTP)
+    // This allows the API to respond immediately while email sends
+    unawaited(
+      emailService.sendEmail(emailMessage).then(
+        (_) => print('[✓] Verification email sent to $email'),
+        onError: (e) => print('[ERROR] Failed to send verification email to $email: $e'),
+      ),
+    );
 
     final bool isDevelopment = !bool.fromEnvironment('dart.vm.product');
     final successMessage = emailService.isUsingMailhog
