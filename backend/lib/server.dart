@@ -138,11 +138,9 @@ void main() async {
     rethrow;
   }
 
-  // Seed test users for development
-  if (env == 'development') {
-    print('[INFO] Seeding test users for development...');
-    await _seedTestUsers(dbConnection);
-  }
+  // Always ensure test users exist in database (for testing on all environments)
+  print('[INFO] Ensuring test users exist in database...');
+  await _seedTestUsers(dbConnection);
 
   // Initialize services
   final tokenService = TokenService();
