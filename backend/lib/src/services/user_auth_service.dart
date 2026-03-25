@@ -207,8 +207,9 @@ class UserAuthService {
       final username = userRow[2] as String;
       final storedHash = userRow[3] as String;
 
-      // Verify password
-      final isPasswordValid = PasswordHasher.verifyPassword(password, storedHash);
+      // Verify password - use simple hash matching (same as server.dart _hashPassword)
+      final computedHash = password.hashCode.toRadixString(36);
+      final isPasswordValid = computedHash == storedHash;
       if (!isPasswordValid) {
         throw AuthException(
           'Invalid email or password',
