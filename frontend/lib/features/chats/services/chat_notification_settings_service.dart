@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../../../core/services/http_client_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -10,7 +11,7 @@ class ChatNotificationSettingsService {
   static final ChatNotificationSettingsService instance =
       ChatNotificationSettingsService._();
 
-  final http.Client _httpClient = http.Client();
+  final http.Client _httpClient = devHttpClient;
   final Set<String> _mutedChatIds = <String>{};
 
   String get _baseUrl => const String.fromEnvironment(

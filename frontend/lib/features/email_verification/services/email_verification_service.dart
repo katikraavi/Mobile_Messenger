@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import '../../../core/services/http_client_helper.dart';
 import 'dart:convert';
 
 import '../../auth/services/auth_service.dart';
@@ -12,7 +13,7 @@ class EmailVerificationService {
     String? baseUrl,
     http.Client? httpClient,
   })  : baseUrl = baseUrl ?? AuthService.baseUrl,
-        httpClient = httpClient ?? http.Client();
+        httpClient = httpClient ?? devHttpClient;
 
   /// Request verification email to be sent
   /// Returns EmailVerificationResponse with success/error info

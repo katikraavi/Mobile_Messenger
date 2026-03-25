@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import '../../../core/services/http_client_helper.dart';
 import 'dart:convert';
 
 import '../../auth/services/auth_service.dart';
@@ -12,7 +13,7 @@ class PasswordRecoveryService {
     String? baseUrl,
     http.Client? httpClient,
   })  : baseUrl = baseUrl ?? AuthService.baseUrl,
-        httpClient = httpClient ?? http.Client();
+        httpClient = httpClient ?? devHttpClient;
 
   /// Request password reset email
   Future<PasswordRecoveryResponse> requestPasswordReset({

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
+import '../../../core/services/http_client_helper.dart';
 
 /// API client is handled internally via http package
 
@@ -21,7 +22,7 @@ class ChatApiService {
 
   ChatApiService({required String baseUrl, http.Client? httpClient})
     : _baseUrl = _resolveBaseUrl(baseUrl),
-      _httpClient = httpClient ?? http.Client();
+      _httpClient = httpClient ?? devHttpClient;
 
   static String _resolveBaseUrl(String providedBaseUrl) {
     final lower = providedBaseUrl.toLowerCase();

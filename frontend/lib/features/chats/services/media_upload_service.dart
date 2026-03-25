@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../../../core/services/http_client_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'media_picker_service.dart';
 
@@ -82,7 +83,7 @@ class MediaUploadService {
   final String _baseUrl;
 
   MediaUploadService({http.Client? httpClient, String? baseUrl})
-    : _httpClient = httpClient ?? http.Client(),
+    : _httpClient = httpClient ?? devHttpClient,
       _baseUrl =
           baseUrl ??
           const String.fromEnvironment(

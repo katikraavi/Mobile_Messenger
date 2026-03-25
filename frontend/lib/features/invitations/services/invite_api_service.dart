@@ -20,7 +20,7 @@ class InviteApiService {
   })  : _baseUrl = baseUrl,
         _authToken = authToken,
         _userId = userId,
-        _httpClient = httpClient ?? http.Client();
+        _httpClient = httpClient ?? devHttpClient;
 
   /// Get auth token (always read fresh from storage to handle auth switches)
   Future<String?> _getAuthToken() async {
