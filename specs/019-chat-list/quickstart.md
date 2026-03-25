@@ -158,7 +158,7 @@ flutter run -d emulator-5554
 
 **User 1: Alice**
 
-1. Login with: `alice@example.com` / `alice123`
+1. Login with: `alice@example.com` / `Alice@123`
 2. Tap "Invitations" tab
 3. Send invitation to `bob@example.com`
 
@@ -169,7 +169,7 @@ Launch second emulator or use physical device:
 flutter run -d <device-id>
 ```
 
-1. Login with: `bob@example.com` / `bob123`
+1. Login with: `bob@example.com` / `Bob@123`
 2. Tap "Invitations" tab
 3. See Alice's invitation
 4. Tap "Accept"
@@ -244,7 +244,7 @@ Use Python test script or `curl` for backend validation:
 # Get JWT token
 curl -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"alice", "password":"alice123"}'
+  -d '{"username":"alice", "password":"Alice@123"}'
 
 # Response: { "token": "eyJhbGc..." }
 

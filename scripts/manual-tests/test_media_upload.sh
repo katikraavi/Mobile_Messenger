@@ -4,7 +4,7 @@
 
 BASE_URL="http://localhost:8081"
 BOB_EMAIL="bob@example.com"
-BOB_PASSWORD="bob123"
+BOB_PASSWORD="Bob@123"
 
 echo "===== MEDIA UPLOAD TEST ====="
 echo ""

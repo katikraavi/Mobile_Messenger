@@ -59,15 +59,15 @@ Or for other devices:
 ### Step 3: Test Login
 - **Test User 1:**
   - Email: `alice@example.com`
-  - Password: `alice123`
+  - Password: `Alice@123`
 
 - **Test User 2:**
   - Email: `bob@example.com`
-  - Password: `bob123`
+  - Password: `Bob@123`
 
 - **Test User 3:**
   - Email: `charlie@example.com`
-  - Password: `charlie123`
+  - Password: `Charlie@123`
 
 ## 🐛 Troubleshooting
 

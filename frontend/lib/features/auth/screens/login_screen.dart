@@ -234,7 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('alice@example.com', 'Alice123!');
+                                    _fillTestAccount('alice@example.com', 'Alice@123');
                                   },
                                 ),
                               ),
@@ -248,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('bob2@example.com', 'Bob123!A');
+                                    _fillTestAccount('bob@example.com', 'Bob@123');
                                   },
                                 ),
                               ),
@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('charlie@example.com', 'Charlie123!');
+                                    _fillTestAccount('charlie@example.com', 'Charlie@123');
                                   },
                                 ),
                               ),
@@ -280,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('diane@test.org', 'Diane123!');
+                                    _fillTestAccount('diane@example.com', 'Diane@123');
                                   },
                                 ),
                               ),

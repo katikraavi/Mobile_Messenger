@@ -7,12 +7,12 @@ import 'package:uuid/uuid.dart';
 /// Test Users Creation Script
 /// 
 /// Creates predefined test users in the database:
-/// - alice@example.com / alice123
-/// - bob@example.com / bob123
-/// - charlie@example.com / charlie123
-/// - diane@test.org / diane123
-/// - testuser1@example.com / testuser1pass
-/// - testuser2@example.com / testuser2pass
+/// - alice@example.com / Alice@123
+/// - bob@example.com / Bob@123
+/// - charlie@example.com / Charlie@123
+/// - diane@example.com / Diane@123
+/// - testuser1@example.com / TestUser1@
+/// - testuser2@example.com / TestUser2@
 
 void main() async {
   print('╔════════════════════════════════════════════════════════╗');
@@ -51,42 +51,43 @@ void main() async {
   }
 
   try {
-    // Test users to create
+    // Test users to create with passwords meeting requirements:
+    // At least 8 chars, uppercase, lowercase, digit, special char (!@#$%^&*(),.?":{}|<>)
     final testUsers = [
       {
         'username': 'alice',
         'email': 'alice@example.com',
-        'password': 'alice123',
+        'password': 'Alice@123',
         'full_name': 'Alice Anderson',
       },
       {
         'username': 'bob',
         'email': 'bob@example.com',
-        'password': 'bob123',
+        'password': 'Bob@123',
         'full_name': 'Bob Baker',
       },
       {
         'username': 'charlie',
         'email': 'charlie@example.com',
-        'password': 'charlie123',
+        'password': 'Charlie@123',
         'full_name': 'Charlie Chen',
       },
       {
         'username': 'diane',
-        'email': 'diane@test.org',
-        'password': 'diane123',
+        'email': 'diane@example.com',
+        'password': 'Diane@123',
         'full_name': 'Diane Davis',
       },
       {
         'username': 'testuser1',
         'email': 'testuser1@example.com',
-        'password': 'testuser1pass',
+        'password': 'TestUser1@',
         'full_name': 'Test User One',
       },
       {
         'username': 'testuser2',
         'email': 'testuser2@example.com',
-        'password': 'testuser2pass',
+        'password': 'TestUser2@',
         'full_name': 'Test User Two',
       },
     ];
@@ -219,10 +220,10 @@ void main() async {
     print('[↻] Updated: $updatedCount existing users');
     print('');
     print('Test Users Ready:');
-    print('  • alice / alice123');
-    print('  • bob / bob123');
-    print('  • charlie / charlie123');
-    print('  • diane / diane123');
+    print('  • alice / Alice@123');
+    print('  • bob / Bob@123');
+    print('  • charlie / Charlie@123');
+    print('  • diane / Diane@123');
     print('  • testuser1 / testuser1pass');
     print('  • testuser2 / testuser2pass');
     print('');
