@@ -34,12 +34,14 @@ void main() async {
 
   late PostgreSQLConnection connection;
   try {
+    // Use useSSL parameter for Neon compatibility
     connection = PostgreSQLConnection(
       host,
       port,
       database,
       username: username,
       password: password,
+      useSSL: true,  // Required for Neon
     );
     await connection.open();
     print('[✓] Connected to database');
