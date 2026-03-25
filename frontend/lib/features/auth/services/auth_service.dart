@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../../core/services/http_client_helper.dart';
+import '../../../core/services/http_client_helper.dart';
 import '../models/auth_models.dart';
 
 /// Custom exception for authentication errors

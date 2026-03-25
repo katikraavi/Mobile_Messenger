@@ -41,12 +41,20 @@ class DevHttpClient extends http.BaseClient {
         final response = await httprequest.close();
         final bytes = await response.fold<List<int>>([], (list, chunk) => list..addAll(chunk));
         
+        // Convert HttpHeaders to Map<String, String>
+        final headers = <String, String>{};
+        response.headers.forEach((name, values) {
+          if (values.isNotEmpty) {
+            headers[name] = values.first;
+          }
+        });
+        
         return http.StreamedResponse(
           Future.value(bytes).asStream(),
           response.statusCode,
           contentLength: bytes.length,
           request: request,
-          headers: response.headers,
+          headers: headers,
           isRedirect: response.isRedirect,
         );
       }
