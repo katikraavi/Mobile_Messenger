@@ -56,6 +56,9 @@ To configure another machine, copy `.env.example` to `.env` and then choose one 
 - MailHog for local capture only
 - Gmail SMTP for real inbox delivery
 
+For local capture only, keep `SMTP_HOST=mailhog` and `EMAIL_DRY_RUN=false`.
+For hosted delivery, configure a real SMTP provider and keep `EMAIL_DRY_RUN=false`.
+
 ## Project Structure
 
 ```
@@ -153,6 +156,40 @@ docker compose up -d --build
 ```
 
 If your local ignored `.env` is configured for Gmail SMTP, plain `docker compose up` will send real emails. If `.env` is configured for MailHog, emails will be captured locally instead.
+
+### Email Readiness Check
+
+After backend startup, verify email configuration with:
+
+```bash
+curl http://localhost:8081/health/email
+```
+
+Expected values:
+- `status: ready` when SMTP is configured
+- `mode: smtp` for real SMTP delivery
+- `mode: mailhog` for local captured email
+- `missing: []` when required SMTP fields are present
+
+If `status` is `not_ready`, verification and password-reset endpoints will now fail fast instead of reporting fake success.
+
+### Hosted Deployment Check
+
+After deploying backend changes to a hosted environment, verify:
+
+```bash
+curl https://your-backend-host/health/email
+```
+
+Then test:
+
+```bash
+curl -X POST https://your-backend-host/auth/password-reset/request \
+	-H 'Content-Type: application/json' \
+	--data '{"email":"your-test-user@example.com"}'
+```
+
+If SMTP is missing or broken, the endpoint should return an explicit error.
 
 ### Frontend Development
 

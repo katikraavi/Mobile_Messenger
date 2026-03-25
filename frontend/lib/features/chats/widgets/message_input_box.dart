@@ -32,7 +32,7 @@ class MessageInputBox extends StatefulWidget {
   final VoidCallback? onTypingRefresh;
 
   const MessageInputBox({
-    Key? key,
+    super.key,
     required this.onSend,
     this.isLoading = false,
     this.onAttachmentTap,
@@ -45,7 +45,7 @@ class MessageInputBox extends StatefulWidget {
     this.onTypingStart,
     this.onTypingStop,
     this.onTypingRefresh,
-  }) : super(key: key);
+  });
 
   @override
   State<MessageInputBox> createState() => _MessageInputBoxState();
@@ -157,113 +157,121 @@ class _MessageInputBoxState extends State<MessageInputBox> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300),
+    return SafeArea(
+      top: false,
+      left: false,
+      right: false,
+      minimum: const EdgeInsets.only(bottom: 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          border: Border(
+            top: BorderSide(color: Colors.grey.shade300),
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          // Image attachment button (T078)
-          if (widget.onImageTap != null)
-            IconButton(
-              icon: Icon(Icons.image),
-              onPressed: widget.isLoading ? null : widget.onImageTap,
-              tooltip: 'Attach image',
-            ),
-
-          // Video attachment button (T078)
-          if (widget.onVideoTap != null)
-            IconButton(
-              icon: Icon(Icons.videocam),
-              onPressed: widget.isLoading ? null : widget.onVideoTap,
-              tooltip: 'Attach video',
-            ),
-
-          if (widget.onAudioTap != null)
-            IconButton(
-              icon: Icon(
-                widget.isRecordingAudio ? Icons.stop_circle_outlined : Icons.mic,
-                color: widget.isRecordingAudio ? Colors.red : null,
+        child: Row(
+          children: [
+            // Image attachment button (T078)
+            if (widget.onImageTap != null)
+              IconButton(
+                icon: const Icon(Icons.image),
+                onPressed: widget.isLoading ? null : widget.onImageTap,
+                tooltip: 'Attach image',
               ),
-              onPressed: widget.isLoading ? null : widget.onAudioTap,
-              tooltip: widget.isRecordingAudio ? 'Stop recording' : 'Record audio',
-            ),
 
-          // Message input field
-          Expanded(
-            child: Focus(
-              onFocusChange: (isFocused) {
-                if (isFocused) {
-                  // Focus - could start typing
-                } else {
-                  // Blur - stop typing
-                  _handleInputBlur();
-                }
-              },
-              child: TextField(
-                controller: _controller,
-                enabled: !widget.isLoading,
-                maxLength: widget.maxLength,
-                maxLines: null,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: 'Type a message...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
+            // Video attachment button (T078)
+            if (widget.onVideoTap != null)
+              IconButton(
+                icon: const Icon(Icons.videocam),
+                onPressed: widget.isLoading ? null : widget.onVideoTap,
+                tooltip: 'Attach video',
+              ),
+
+            if (widget.onAudioTap != null)
+              IconButton(
+                icon: Icon(
+                  widget.isRecordingAudio ? Icons.stop_circle_outlined : Icons.mic,
+                  color: widget.isRecordingAudio ? Colors.red : null,
+                ),
+                onPressed: widget.isLoading ? null : widget.onAudioTap,
+                tooltip:
+                    widget.isRecordingAudio ? 'Stop recording' : 'Record audio',
+              ),
+
+            // Message input field
+            Expanded(
+              child: Focus(
+                onFocusChange: (isFocused) {
+                  if (isFocused) {
+                    // Focus - could start typing
+                  } else {
+                    // Blur - stop typing
+                    _handleInputBlur();
+                  }
+                },
+                child: TextField(
+                  controller: _controller,
+                  enabled: !widget.isLoading,
+                  maxLength: widget.maxLength,
+                  maxLines: null,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: 'Type a message...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    counterText: '', // Hide char counter (can be shown if needed)
+                    filled: true,
+                    fillColor: Colors.white,
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  counterText: '', // Hide char counter (can be shown if needed)
-                  filled: true,
-                  fillColor: Colors.white,
                 ),
               ),
             ),
-          ),
 
-          SizedBox(width: 8),
+            const SizedBox(width: 8),
 
-          // Send button
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: _isEmpty || widget.isLoading
-                  ? Colors.grey.shade300
-                  : Colors.blue,
-              shape: BoxShape.circle,
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _isEmpty || widget.isLoading ? null : _handleSend,
-                customBorder: CircleBorder(),
-                child: widget.isLoading
-                    ? Padding(
-                        padding: EdgeInsets.all(12),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation(Colors.blue),
+            // Send button
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _isEmpty || widget.isLoading
+                    ? Colors.grey.shade300
+                    : Colors.blue,
+                shape: BoxShape.circle,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _isEmpty || widget.isLoading ? null : _handleSend,
+                  customBorder: const CircleBorder(),
+                  child: widget.isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.blue),
+                          ),
+                        )
+                      : Icon(
+                          Icons.send,
+                          color: _isEmpty ? Colors.grey : Colors.white,
+                          size: 20,
                         ),
-                      )
-                    : Icon(
-                        Icons.send,
-                        color: _isEmpty ? Colors.grey : Colors.white,
-                        size: 20,
-                      ),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

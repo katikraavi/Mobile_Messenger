@@ -58,7 +58,10 @@ class Invite {
 }
 
 class InviteService {
-  static const String baseUrl = 'http://localhost:8081';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8081',
+  );
   static const Duration defaultTimeout = Duration(seconds: 30);
   static const int maxRetries = 3;
   

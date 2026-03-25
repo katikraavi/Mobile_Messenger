@@ -20,7 +20,7 @@ services:
       start_period: 10s
     networks:
       messenger-network:
-        ipv4_address: 172.20.0.2
+        ipv4_address: 172.22.0.2
     restart: unless-stopped
 
   # Serverpod Backend Service
@@ -49,7 +49,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_SECURE: ${SMTP_SECURE:-false}
-      APP_BASE_URL: "http://localhost:8081"
+      EMAIL_DRY_RUN: ${EMAIL_DRY_RUN:-false}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8081}
     ports:
       - "8081:8081"
     depends_on:
@@ -65,7 +66,7 @@ services:
       start_period: 10s
     networks:
       messenger-network:
-        ipv4_address: 172.20.0.3
+        ipv4_address: 172.22.0.3
     restart: unless-stopped
     volumes:
       - ./backend:/app/backend:ro
@@ -82,7 +83,31 @@ services:
       - "8025:8025"  # Web UI
     networks:
       messenger-network:
-        ipv4_address: 172.20.0.4
+        ipv4_address: 172.22.0.4
+    restart: unless-stopped
+
+  # ── APK builder / distribution server ─────────────────────────────────────
+  # Builds a release APK with the backend URL baked in, then serves it via
+  # nginx so testers can download it with a browser on any device.
+  #
+  # Usage:
+  #   1. Set BACKEND_HOST=<your LAN IP> in your .env  (e.g. 192.168.1.100)
+  #   2. docker-compose --profile apk build apk
+  #   3. docker-compose --profile apk up -d apk
+  #   4. Tester opens http://<your LAN IP>:8090 on their Android phone and
+  #      downloads + installs messenger.apk  (no Flutter required on tester side)
+  apk:
+    profiles: ["apk"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.apk
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://${BACKEND_HOST:-10.0.2.2}:8081}
+    container_name: messenger-apk
+    ports:
+      - "8090:80"
+    networks:
+      - messenger-network
     restart: unless-stopped
 
 networks:
@@ -90,7 +115,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.22.0.0/16
 
 volumes:
   postgres_data:

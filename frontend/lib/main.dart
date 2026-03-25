@@ -16,7 +16,13 @@ import 'package:media_kit/media_kit.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    // Media kit initialization failed (e.g., libmpv.so not found)
+    // This is okay - video playback will fail gracefully when needed
+    debugPrint('MediaKit initialization failed: $e');
+  }
   fvp.registerWith(options: {
     'platforms': ['linux'],
   });
@@ -62,8 +68,8 @@ void main() async {
     debugPrint('[Firebase] initializeApp failed: $e');
   }
 
-  // Initialize API client before running app
-  await ApiClient.initialize();
+  // Initialize API client without blocking first frame rendering.
+  await ApiClient.initialize(waitForHealthCheck: false);
 
   runApp(
     ProviderScope(

@@ -25,6 +25,11 @@ import '../services/audio_recording_service.dart';
 import '../services/chat_notification_settings_service.dart';
 import '../../auth/providers/auth_provider.dart' as auth;
 
+const _apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:8081',
+);
+
 String _displayName(String? value) {
   if (value == null || value.isEmpty) {
     return 'Unknown';
@@ -600,7 +605,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
       debugPrint('[ChatDetail] ✅ Image uploaded: ${uploadedMedia.id}');
 
-      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final chatApiService = ChatApiService(baseUrl: _apiBaseUrl);
       final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
       final sentMessage = await chatApiService.sendMessage(
         token: token,
@@ -669,7 +674,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
 
       debugPrint('[ChatDetail] ✅ Video uploaded: ${uploadedMedia.id}');
 
-      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final chatApiService = ChatApiService(baseUrl: _apiBaseUrl);
       final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
       final sentMessage = await chatApiService.sendMessage(
         token: token,
@@ -748,7 +753,7 @@ class _ChatDetailScreenState extends ConsumerState<ChatDetailScreen> {
         token: token,
       );
 
-      final chatApiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final chatApiService = ChatApiService(baseUrl: _apiBaseUrl);
       final mediaPath = '/uploads/media/${uploadedMedia.fileName}';
       final sentMessage = await chatApiService.sendMessage(
         token: token,

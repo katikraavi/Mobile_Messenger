@@ -5,6 +5,11 @@ import '../services/message_websocket_service.dart';
 import '../services/message_encryption_service.dart';
 import './websocket_provider.dart';
 
+const _apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:8081',
+);
+
 /// Provider to handle message status updates from WebSocket
 /// Updates the message cache when status changes are received
 final messageStatusUpdateProvider = StreamProvider.autoDispose<({
@@ -40,7 +45,7 @@ final autoMarkAsReadProvider =
     FutureProvider.family<void, ({String chatId, String token, String currentUserId})>(
   (ref, params) async {
     final (:chatId, :token, :currentUserId) = params;
-    final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+    final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
     try {
       print('[AutoMarkAsRead] ⭐ PROVIDER INVOKED for chat $chatId');
@@ -143,5 +148,5 @@ class MessageStatusNotifier extends StateNotifier<void> {
 /// Notifier for message status updates
 final messageStatusNotifierProvider =
     StateNotifierProvider.autoDispose<MessageStatusNotifier, void>(
-  (ref) => MessageStatusNotifier(ChatApiService(baseUrl: 'http://localhost:8081'), ref),
+  (ref) => MessageStatusNotifier(ChatApiService(baseUrl: _apiBaseUrl), ref),
 );

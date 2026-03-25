@@ -3,7 +3,10 @@ import 'package:http/http.dart' as http;
 import '../../../core/models/user.dart';
 
 class ProfileService {
-  static const String baseUrl = 'http://localhost:8081';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8081',
+  );
   final String? authToken;
 
   ProfileService({this.authToken});

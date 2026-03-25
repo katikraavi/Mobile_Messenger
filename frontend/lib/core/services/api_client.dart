@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -12,33 +11,47 @@ import 'dart:io';
 /// - Base URL configuration for Android/iOS emulator differences
 
 class ApiClient {
-  static late String _baseUrl;
-  static late http.Client _httpClient;
+  static String _baseUrl = '';
+  static http.Client? _httpClient;
   static bool _isHealthy = false;
+  static bool _isInitialized = false;
 
   /// Initialize API client with backend URL
-  /// 
-  /// Automatically detects platform and sets appropriate backend URL:
-  /// - Android emulator: http://172.31.195.26:8081 (WSL2 host IP for Docker backend)
-  /// - iOS simulator: http://localhost:8081
-  /// - Linux/Web: http://localhost:8081
-  /// - Physical device: http://localhost:8081 (configure for your network)
-  static Future<void> initialize() async {
-    _httpClient = http.Client();
-    
-    // Set base URL based on platform
-    if (Platform.isAndroid) {
-      // Android emulator needs to reach WSL2 host where Docker backend is running
-      // Using WSL2 host IP: 172.31.195.26
-      _baseUrl = 'http://172.31.195.26:8081';
-    } else {
-      // For iOS, Linux, macOS, Windows, Web: use localhost
-      // Docker containers are accessible via localhost:8081 on the host
-      _baseUrl = 'http://localhost:8081';
+  ///
+  /// Priority order for backend URL resolution:
+  /// 1. BACKEND_URL dart-define (injected at build time for APK distribution)
+  /// 2. Hosted production backend: https://mobile-messenger-backend.onrender.com
+  ///
+  /// To build with a custom URL:
+  ///   flutter build apk --dart-define=BACKEND_URL=http://192.168.1.100:8081
+  static Future<void> initialize({bool waitForHealthCheck = false}) async {
+    if (_isInitialized) {
+      return;
     }
-    
-    // Try to connect to backend with retry logic
-    _isHealthy = await connectToBackend();
+
+    _httpClient = http.Client();
+
+    // Prefer compile-time BACKEND_URL (set via --dart-define when building APK for testers)
+    const envUrl = String.fromEnvironment('BACKEND_URL');
+    if (envUrl.isNotEmpty) {
+      _baseUrl = envUrl;
+    } else {
+      // Default to hosted production backend
+      _baseUrl = 'https://mobile-messenger-backend.onrender.com';
+    }
+
+    _isInitialized = true;
+
+    // Avoid blocking app startup on slow/unreachable networks.
+    if (waitForHealthCheck) {
+      _isHealthy = await connectToBackend();
+    } else {
+      unawaited(
+        connectToBackend().then((connected) {
+          _isHealthy = connected;
+        }),
+      );
+    }
   }
 
   /// Connect to backend with exponential backoff retry logic
@@ -46,6 +59,10 @@ class ApiClient {
   /// Attempts: 5 times with delays: 100ms, 500ms, 2s, 5s, 10s
   /// Returns true if health check succeeds, false after all retries exhausted
   static Future<bool> connectToBackend() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
     const maxRetries = 5;
     const delays = [100, 500, 2000, 5000, 10000]; // milliseconds
 
@@ -78,7 +95,7 @@ class ApiClient {
   /// Returns false if connection fails or response is invalid
   static Future<bool> isHealthy() async {
     try {
-      final response = await _httpClient.get(
+      final response = await _httpClient!.get(
         Uri.parse('$_baseUrl/health'),
       ).timeout(
         const Duration(seconds: 30),
@@ -113,7 +130,10 @@ class ApiClient {
   /// 
   /// Example: ApiClient.get('/users') → http://host.docker.internal:8081/users
   static Future<http.Response> get(String endpoint) async {
-    return _httpClient.get(Uri.parse('$_baseUrl$endpoint'));
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _httpClient!.get(Uri.parse('$_baseUrl$endpoint'));
   }
 
   /// Make POST request to backend endpoint
@@ -122,7 +142,10 @@ class ApiClient {
     Map<String, String>? headers,
     Object? body,
   }) async {
-    return _httpClient.post(
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _httpClient!.post(
       Uri.parse('$_baseUrl$endpoint'),
       headers: headers,
       body: body,
@@ -135,7 +158,10 @@ class ApiClient {
     Map<String, String>? headers,
     Object? body,
   }) async {
-    return _httpClient.put(
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _httpClient!.put(
       Uri.parse('$_baseUrl$endpoint'),
       headers: headers,
       body: body,
@@ -147,7 +173,10 @@ class ApiClient {
     String endpoint, {
     Map<String, String>? headers,
   }) async {
-    return _httpClient.delete(
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _httpClient!.delete(
       Uri.parse('$_baseUrl$endpoint'),
       headers: headers,
     );
@@ -155,6 +184,8 @@ class ApiClient {
 
   /// Close HTTP client (call when app is shutting down)
   static void dispose() {
-    _httpClient.close();
+    _httpClient?.close();
+    _httpClient = null;
+    _isInitialized = false;
   }
 }

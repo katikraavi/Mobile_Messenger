@@ -64,7 +64,10 @@ class SearchResultsState {
 // Provider for SearchService instance
 final searchServiceProvider = Provider((ref) {
   // Get base URL from config (or use default)
-  final baseUrl = 'http://localhost:8081';
+  const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8081',
+  );
   
   // Get auth token from secure storage
   String getToken() {
@@ -84,7 +87,10 @@ final searchServiceProvider = Provider((ref) {
 
 // Provider for SearchService with token
 final searchServiceWithTokenProvider = FutureProvider((ref) async {
-  const baseUrl = 'http://localhost:8081';
+  const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8081',
+  );
   
   // Get token asynchronously
   final tokenAsync = await ref.watch(authTokenProvider.future);

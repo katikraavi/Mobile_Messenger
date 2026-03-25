@@ -109,7 +109,7 @@ class MessageWebSocketService {
   Future<void> connect({
     required String token,
     required String userId,
-    String baseUrl = 'ws://localhost:8081',
+    String? baseUrl,
   }) async {
     if (_isConnected) {
       debugPrint('[MessageWebSocket] Already connected');
@@ -118,7 +118,13 @@ class MessageWebSocketService {
 
     try {
       _currentUserId = userId;
-      final wsUrl = Uri.parse('$baseUrl/ws/messages?token=$token');
+      final resolvedBaseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            'WS_BASE_URL',
+            defaultValue: 'ws://localhost:8081',
+          );
+      final wsUrl = Uri.parse('$resolvedBaseUrl/ws/messages?token=$token');
 
       debugPrint('[MessageWebSocket] 🔗 Attempting to connect to $wsUrl');
       _webSocket = WebSocketChannel.connect(wsUrl);

@@ -234,7 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('alice@example.com', 'alice123');
+                                    _fillTestAccount('alice@example.com', 'Alice123!');
                                   },
                                 ),
                               ),
@@ -248,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('bob@example.com', 'bob123');
+                                    _fillTestAccount('bob2@example.com', 'Bob123!A');
                                   },
                                 ),
                               ),
@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('charlie@example.com', 'charlie123');
+                                    _fillTestAccount('charlie@example.com', 'Charlie123!');
                                   },
                                 ),
                               ),
@@ -280,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('diane@test.org', 'diane123');
+                                    _fillTestAccount('diane@test.org', 'Diane123!');
                                   },
                                 ),
                               ),
@@ -298,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('testuser1@example.com', 'testuser1pass');
+                                    _fillTestAccount('testuser1@example.com', 'Testuser1!');
                                   },
                                 ),
                               ),
@@ -312,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     side: BorderSide(color: Colors.amber.shade400),
                                   ),
                                   onPressed: () {
-                                    _fillTestAccount('testuser2@example.com', 'testuser2pass');
+                                    _fillTestAccount('testuser2@example.com', 'Testuser2!');
                                   },
                                 ),
                               ),

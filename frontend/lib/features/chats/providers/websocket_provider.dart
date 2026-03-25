@@ -11,6 +11,29 @@ final messageWebSocketProvider =
 class WebSocketNotifier extends StateNotifier<MessageWebSocketService> {
   WebSocketNotifier() : super(MessageWebSocketService());
 
+  String get _webSocketBaseUrl {
+    const explicitWsUrl = String.fromEnvironment('WS_BASE_URL');
+    if (explicitWsUrl.isNotEmpty) {
+      return explicitWsUrl;
+    }
+
+    const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+    if (apiBaseUrl.isNotEmpty) {
+      return apiBaseUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
+    }
+
+    const backendUrl = String.fromEnvironment('BACKEND_URL');
+    if (backendUrl.isNotEmpty) {
+      return backendUrl
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
+    }
+
+    return 'ws://localhost:8081';
+  }
+
   /// Connect to WebSocket
   Future<void> connect({
     required String token,
@@ -20,7 +43,7 @@ class WebSocketNotifier extends StateNotifier<MessageWebSocketService> {
       await state.connect(
         token: token,
         userId: userId,
-        baseUrl: 'ws://localhost:8081',
+        baseUrl: _webSocketBaseUrl,
       );
     } catch (e) {
       print('[WebSocketNotifier] Error connecting: $e');

@@ -33,7 +33,12 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
   @override
   void initState() {
     super.initState();
-    _inviteService = InviteApiService(baseUrl: 'http://localhost:8081');
+    _inviteService = InviteApiService(
+      baseUrl: const String.fromEnvironment(
+        'API_BASE_URL',
+        defaultValue: 'http://localhost:8081',
+      ),
+    );
   }
 
   Future<void> _sendInvite() async {

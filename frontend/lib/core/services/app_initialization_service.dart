@@ -1,10 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/services/websocket_service.dart';
 import '../../features/chats/providers/receive_messages_provider.dart';
 import '../../features/chats/providers/typing_indicator_provider.dart';
-import '../services/chat_api_service.dart';
+import '../../features/chats/services/chat_api_service.dart';
 
 /// Application initialization service (T032, T047)
 /// 
@@ -47,7 +46,6 @@ class AppInitializationService {
       await webSocketService.connect(
         token: token,
         userId: userId,
-        url: 'ws://localhost:8081/ws/messages',
       );
 
       debugPrint('[AppInitialization] ✓ WebSocket connected');

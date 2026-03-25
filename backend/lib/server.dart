@@ -37,8 +37,72 @@ bool get _verboseBackendLogs {
   return value.toLowerCase() == '1' || value.toLowerCase() == 'true';
 }
 
+class _DatabaseConfig {
+  const _DatabaseConfig({
+    required this.host,
+    required this.port,
+    required this.name,
+    required this.user,
+    required this.password,
+    required this.useSSL,
+  });
+
+  final String host;
+  final int port;
+  final String name;
+  final String user;
+  final String password;
+  final bool useSSL;
+}
+
+_DatabaseConfig _resolveDatabaseConfig() {
+  final databaseUrl = Platform.environment['DATABASE_URL'];
+
+  if (databaseUrl != null && databaseUrl.isNotEmpty) {
+    try {
+      final uri = Uri.parse(databaseUrl);
+      if (uri.host.isNotEmpty) {
+        final userInfo = uri.userInfo.split(':');
+        final dbName = uri.path.startsWith('/') ? uri.path.substring(1) : uri.path;
+        final sslMode = (uri.queryParameters['sslmode'] ?? '').toLowerCase();
+        final envSsl = (Platform.environment['DATABASE_SSL'] ?? '').toLowerCase();
+        final useSSL = sslMode == 'require' || envSsl == 'true' || envSsl == '1';
+
+        return _DatabaseConfig(
+          host: uri.host,
+          port: uri.port == 0 ? 5432 : uri.port,
+          name: dbName.isEmpty ? 'messenger_db' : dbName,
+          user: userInfo.isNotEmpty && userInfo[0].isNotEmpty
+              ? Uri.decodeComponent(userInfo[0])
+              : 'messenger_user',
+          password: userInfo.length > 1
+              ? Uri.decodeComponent(userInfo[1])
+              : (Platform.environment['DATABASE_PASSWORD'] ?? 'messenger_password'),
+          useSSL: useSSL,
+        );
+      }
+    } catch (_) {
+      // Fall back to split DATABASE_* variables below.
+    }
+  }
+
+  final envSsl = (Platform.environment['DATABASE_SSL'] ?? '').toLowerCase();
+  return _DatabaseConfig(
+    host: Platform.environment['DATABASE_HOST'] ?? 'localhost',
+    port: int.parse(Platform.environment['DATABASE_PORT'] ?? '5432'),
+    name: Platform.environment['DATABASE_NAME'] ?? 'messenger_db',
+    user: Platform.environment['DATABASE_USER'] ?? 'messenger_user',
+    password: Platform.environment['DATABASE_PASSWORD'] ?? 'messenger_password',
+    useSSL: envSsl == 'true' || envSsl == '1',
+  );
+}
+
 void main() async {
-  final port = int.parse(Platform.environment['SERVERPOD_PORT'] ?? '8081');
+  final port = int.parse(
+    Platform.environment['SERVERPOD_PORT'] ??
+        Platform.environment['PORT'] ??
+        '8081',
+  );
   final env = Platform.environment['SERVERPOD_ENV'] ?? 'development';
 
   print('[INFO] Starting Messenger Server (environment: $env)');
@@ -47,13 +111,14 @@ void main() async {
   print('[INFO] Connecting to PostgreSQL database...');
   late Connection dbConnection;
   try {
+    final dbConfig = _resolveDatabaseConfig();
     dbConnection = PostgreSQLConnection(
-      Platform.environment['DATABASE_HOST'] ?? 'localhost',
-      int.parse(Platform.environment['DATABASE_PORT'] ?? '5432'),
-      Platform.environment['DATABASE_NAME'] ?? 'messenger_db',
-      username: Platform.environment['DATABASE_USER'] ?? 'messenger_user',
-      password:
-          Platform.environment['DATABASE_PASSWORD'] ?? 'messenger_password',
+      dbConfig.host,
+      dbConfig.port,
+      dbConfig.name,
+      username: dbConfig.user,
+      password: dbConfig.password,
+      useSSL: dbConfig.useSSL,
     );
     await dbConnection.open();
     print('[✓] Connected to database successfully');
@@ -91,13 +156,19 @@ void main() async {
     smtpSecure:
         (Platform.environment['SMTP_SECURE'] ?? 'false').toLowerCase() ==
             'true',
+    allowUnconfiguredSends:
+        (Platform.environment['EMAIL_DRY_RUN'] ?? 'false').toLowerCase() ==
+            'true',
   );
   if (Platform.environment['SMTP_HOST'] != null) {
     print(
         '[✓] Email: SMTP → ${Platform.environment['SMTP_HOST']}:${Platform.environment['SMTP_PORT'] ?? '?'}');
   } else {
-    print(
-        '[INFO] Email: No SMTP configured — tokens returned in API response (dev mode)');
+    if (emailService.allowUnconfiguredSends) {
+      print('[WARNING] Email: SMTP missing, EMAIL_DRY_RUN enabled (no real emails will be delivered)');
+    } else {
+      print('[WARNING] Email: SMTP not configured; verification/reset endpoints will fail until SMTP env vars are set');
+    }
   }
   for (final warning in emailService.getConfigurationWarnings()) {
     print('[WARNING] Email configuration: $warning');
@@ -209,6 +280,40 @@ Handler _createHandler(
           jsonEncode({
             'status': 'healthy',
             'timestamp': DateTime.now().toIso8601String()
+          }),
+          headers: {'Content-Type': 'application/json'},
+        );
+      }
+
+      // Email configuration health endpoint (public, no secrets)
+      if (path == 'health/email' && method == 'GET') {
+        final missing = <String>[];
+        if ((Platform.environment['SMTP_HOST'] ?? '').trim().isEmpty) {
+          missing.add('SMTP_HOST');
+        }
+        if ((Platform.environment['SMTP_PORT'] ?? '').trim().isEmpty) {
+          missing.add('SMTP_PORT');
+        }
+        if ((Platform.environment['SMTP_FROM_EMAIL'] ?? '').trim().isEmpty) {
+          missing.add('SMTP_FROM_EMAIL');
+        }
+
+        final ready = missing.isEmpty;
+        final mode = ready
+            ? (emailService.isUsingMailhog ? 'mailhog' : 'smtp')
+            : (emailService.allowUnconfiguredSends
+                ? 'dry-run-no-smtp'
+                : 'not-configured');
+
+        return Response.ok(
+          jsonEncode({
+            'status': ready ? 'ready' : 'not_ready',
+            'mode': mode,
+            'smtpConfigured': ready,
+            'emailDryRun': emailService.allowUnconfiguredSends,
+            'missing': missing,
+            'warnings': emailService.getConfigurationWarnings(),
+            'timestamp': DateTime.now().toIso8601String(),
           }),
           headers: {'Content-Type': 'application/json'},
         );

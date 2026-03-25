@@ -1,10 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:convert';
-import '../../features/auth/providers/auth_provider.dart' as auth;
 
 /// WebSocket service (T038)
 /// 
@@ -38,7 +36,7 @@ class WebSocketService {
   Future<void> connect({
     required String token,
     required String userId,
-    String url = 'ws://localhost:8081/ws/messages',
+    String? url,
   }) async {
     if (_isConnecting || _isConnected) {
       debugPrint('[WebSocketService] Already connected or connecting');
@@ -49,10 +47,17 @@ class WebSocketService {
     _userId = userId;
 
     try {
-      debugPrint('[WebSocketService] Connecting to $url');
+      final resolvedUrl =
+          url ??
+          '${const String.fromEnvironment(
+            'WS_BASE_URL',
+            defaultValue: 'wss://mobile-messenger-backend.onrender.com',
+          )}/ws/messages';
+
+      debugPrint('[WebSocketService] Connecting to $resolvedUrl');
 
       _channel = WebSocketChannel.connect(
-        Uri.parse('$url?token=$token'),
+        Uri.parse('$resolvedUrl?token=$token'),
       );
 
       // Listen for messages

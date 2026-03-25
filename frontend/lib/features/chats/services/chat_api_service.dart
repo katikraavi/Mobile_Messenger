@@ -13,12 +13,32 @@ import '../models/message_model.dart';
 /// - Fetching message history with pagination
 /// - All requests are authenticated with JWT token
 class ChatApiService {
+  static const String _apiBaseUrlEnv = String.fromEnvironment('API_BASE_URL');
+  static const String _backendUrlEnv = String.fromEnvironment('BACKEND_URL');
+
   final http.Client _httpClient;
   final String _baseUrl;
 
   ChatApiService({required String baseUrl, http.Client? httpClient})
-    : _baseUrl = baseUrl,
+    : _baseUrl = _resolveBaseUrl(baseUrl),
       _httpClient = httpClient ?? http.Client();
+
+  static String _resolveBaseUrl(String providedBaseUrl) {
+    final lower = providedBaseUrl.toLowerCase();
+    final pointsToLocal =
+        lower.contains('localhost') || lower.contains('10.0.2.2');
+
+    if (pointsToLocal) {
+      if (_apiBaseUrlEnv.isNotEmpty) {
+        return _apiBaseUrlEnv;
+      }
+      if (_backendUrlEnv.isNotEmpty) {
+        return _backendUrlEnv;
+      }
+    }
+
+    return providedBaseUrl;
+  }
 
   /// Fetch all active chats for the current user
   ///

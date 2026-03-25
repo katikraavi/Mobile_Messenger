@@ -4,7 +4,12 @@ import '../services/media_upload_service.dart';
 
 /// Media upload service provider
 final mediaUploadServiceProvider = Provider<MediaUploadService>((ref) {
-  return MediaUploadService(baseUrl: 'http://localhost:8081');
+  return MediaUploadService(
+    baseUrl: const String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:8081',
+    ),
+  );
 });
 
 /// Upload media provider (T074)

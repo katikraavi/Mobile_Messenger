@@ -1,15 +1,18 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+import '../../auth/services/auth_service.dart';
+
 /// Service for making HTTP requests to email verification endpoints
 class EmailVerificationService {
   final String baseUrl;
   final http.Client httpClient;
 
   EmailVerificationService({
-    this.baseUrl = 'http://localhost:8081',
+    String? baseUrl,
     http.Client? httpClient,
-  }) : httpClient = httpClient ?? http.Client();
+  })  : baseUrl = baseUrl ?? AuthService.baseUrl,
+        httpClient = httpClient ?? http.Client();
 
   /// Request verification email to be sent
   /// Returns EmailVerificationResponse with success/error info

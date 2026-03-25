@@ -8,6 +8,11 @@ import '../services/message_encryption_service.dart';
 import '../services/message_websocket_service.dart';
 import './websocket_provider.dart';
 
+const _apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://localhost:8081',
+);
+
 /// Messages provider (T044, T036-T037)
 ///
 /// Fetches messages for a specific chat with JWT token
@@ -25,7 +30,7 @@ final messagesProvider =
       }
 
       // Get API service
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
       // Fetch messages for this chat
       try {
@@ -236,7 +241,7 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
   /// Load messages from server
   Future<void> loadMessagesFromServer() async {
     try {
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
       final messages = await apiService.fetchMessages(
         token: token,
@@ -344,7 +349,7 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
   /// Mark a message as delivered via API
   void _markMessageAsDelivered(String messageId) {
     // Call the API to mark as delivered
-    ChatApiService(baseUrl: 'http://localhost:8081')
+    ChatApiService(baseUrl: _apiBaseUrl)
         .updateMessageStatus(
           token: token,
           chatId: chatId,
@@ -493,7 +498,7 @@ class LocalMessagesNotifier extends StateNotifier<List<Message>> {
       updateMessageStatus(messageId, 'read');
 
       // Then call API to broadcast to sender
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
       print(
         '[LocalMessagesNotifier] 📤 Calling API to mark $messageId as read and broadcast...',
       );
@@ -609,7 +614,7 @@ final messagesWithCacheProvider =
       });
 
       // Fetch messages
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
       try {
         print(
@@ -653,7 +658,7 @@ final editMessageProvider =
         throw Exception('User not authenticated');
       }
 
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
       try {
         print(
@@ -698,7 +703,7 @@ final deleteMessageProvider =
         throw Exception('User not authenticated');
       }
 
-      final apiService = ChatApiService(baseUrl: 'http://localhost:8081');
+      final apiService = ChatApiService(baseUrl: _apiBaseUrl);
 
       try {
         print('[DeleteMessageProvider] 🗑️ Deleting message $messageId');

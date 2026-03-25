@@ -18,6 +18,7 @@ class EmailService {
   final String? smtpUser;
   final String? smtpPassword;
   final bool smtpSecure;
+  final bool allowUnconfiguredSends;
 
   EmailService({
     this.smtpHost,
@@ -27,6 +28,7 @@ class EmailService {
     this.smtpUser,
     this.smtpPassword,
     this.smtpSecure = false,
+    this.allowUnconfiguredSends = false,
   });
 
   bool get isConfigured => !_isNotConfigured();
@@ -358,15 +360,14 @@ This link expires in $expiresIn. For security reasons, you can only use this lin
   /// Returns: True if email was sent successfully
   Future<bool> sendEmail(EmailMessage message) async {
     if (_isNotConfigured()) {
-      // No SMTP configured — log and skip.
-      // In dev mode the verification handler returns the token directly
-      // in the API response, so testing still works without a mail server.
-      print('[EMAIL] No SMTP configured — email NOT sent to ${message.to}');
-      print('[EMAIL] Set SMTP_HOST env var (or use Mailhog in docker-compose) to send real emails.');
-      if (bool.fromEnvironment('dart.vm.product')) {
-        throw EmailSendException('Email service not configured for production');
+      if (allowUnconfiguredSends) {
+        print('[EMAIL] Dry-run mode: SMTP not configured, skipping real send to ${message.to}');
+        return true;
       }
-      return true;
+
+      throw EmailSendException(
+        'Email service not configured: missing SMTP_HOST/SMTP_PORT/SMTP_FROM_EMAIL',
+      );
     }
 
     try {

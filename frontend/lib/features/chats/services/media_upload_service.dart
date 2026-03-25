@@ -83,7 +83,12 @@ class MediaUploadService {
 
   MediaUploadService({http.Client? httpClient, String? baseUrl})
     : _httpClient = httpClient ?? http.Client(),
-      _baseUrl = baseUrl ?? 'http://localhost:8081';
+      _baseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            'API_BASE_URL',
+            defaultValue: 'http://localhost:8081',
+          );
 
   /// Upload media file (T074)
   ///

@@ -53,7 +53,10 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
 
   final Ref ref;
 
-  static const _baseUrl = 'http://localhost:8081';
+  static const _baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8081',
+  );
 
   /// Send a message to a chat with optimistic updates (T027)
   /// 

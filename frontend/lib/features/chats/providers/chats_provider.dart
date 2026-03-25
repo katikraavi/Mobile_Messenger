@@ -5,7 +5,12 @@ import './chat_cache_invalidator.dart';
 
 /// Provider for the chat API service instance
 final chatApiServiceProvider = Provider((ref) {
-  return ChatApiService(baseUrl: 'http://localhost:8081');
+  return ChatApiService(
+    baseUrl: const String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:8081',
+    ),
+  );
 });
 
 /// FutureProvider for fetching chats

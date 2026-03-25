@@ -18,9 +18,12 @@ class AuthException implements Exception {
 /// 
 /// Handles API communication with the backend for registration, login, and session validation
 class AuthService {
-  // Using localhost to connect to Docker container (accessible via 127.0.0.1 on host)
-  static const String _baseUrl = 'http://localhost:8081';
+  // Prefer compile-time URL defines for APK/web distribution.
+  // Priority: API_BASE_URL -> BACKEND_URL -> localhost fallback.
+  static const String _apiBaseUrlEnv = String.fromEnvironment('API_BASE_URL');
+  static const String _backendUrlEnv = String.fromEnvironment('BACKEND_URL');
   static const bool _debugLogs = false;
+  static const Duration _requestTimeout = Duration(seconds: 30);
 
   static void _log(String message) {
     if (_debugLogs) {
@@ -29,7 +32,15 @@ class AuthService {
   }
 
   /// Get the base URL (can be overridden for testing)
-  static String get baseUrl => _baseUrl;
+  static String get baseUrl {
+    if (_apiBaseUrlEnv.isNotEmpty) {
+      return _apiBaseUrlEnv;
+    }
+    if (_backendUrlEnv.isNotEmpty) {
+      return _backendUrlEnv;
+    }
+    return 'https://mobile-messenger-backend.onrender.com';
+  }
 
   /// Register a new user
   /// 
@@ -42,7 +53,7 @@ class AuthService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(request.toJson()),
       ).timeout(
-        const Duration(seconds: 10),
+        _requestTimeout,
         onTimeout: () => throw AuthException('Request timeout - check your connection'),
       );
       _log('[Frontend Register] Response status: ${response.statusCode}, body: ${response.body}');
@@ -99,7 +110,7 @@ class AuthService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(request.toJson()),
       ).timeout(
-        const Duration(seconds: 10),
+        _requestTimeout,
         onTimeout: () => throw AuthException('Request timeout - check your connection'),
       );
 
@@ -154,7 +165,7 @@ class AuthService {
           'Authorization': 'Bearer $token',
         },
       ).timeout(
-        const Duration(seconds: 10),
+        _requestTimeout,
         onTimeout: () => throw AuthException('Request timeout'),
       );
 
@@ -183,7 +194,7 @@ class AuthService {
           'Authorization': 'Bearer $token',
         },
       ).timeout(
-        const Duration(seconds: 10),
+        _requestTimeout,
         onTimeout: () => throw AuthException('Request timeout'),
       );
 
