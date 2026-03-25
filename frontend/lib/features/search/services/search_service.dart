@@ -1,5 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../../core/services/http_client_helper.dart';
 
 /// Result from user search
 class UserSearchResult {
@@ -82,7 +83,7 @@ class SearchService {
         queryParameters: {'q': query, 'limit': '20'},
       );
 
-      final response = await http.get(
+      final response = await devHttpClient.get(
         uri,
         headers: {
           'Authorization': 'Bearer $token',
@@ -138,7 +139,7 @@ class SearchService {
         queryParameters: {'q': query, 'limit': '20'},
       );
 
-      final response = await http.get(
+      final response = await devHttpClient.get(
         uri,
         headers: {
           'Authorization': 'Bearer $token',

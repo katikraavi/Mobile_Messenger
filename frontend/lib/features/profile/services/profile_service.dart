@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../core/models/user.dart';
+import '../../../core/services/http_client_helper.dart';
 
 class ProfileService {
   static const String baseUrl = String.fromEnvironment(
@@ -14,7 +15,7 @@ class ProfileService {
   /// Get user profile
   Future<User?> getProfile(String userId) async {
     try {
-      final response = await http.get(
+      final response = await devHttpClient.get(
         Uri.parse('$baseUrl/profile/view/$userId'),
         headers: _headers(),
       ).timeout(const Duration(seconds: 10));
@@ -41,7 +42,7 @@ class ProfileService {
     bool? isPrivateProfile,
   }) async {
     try {
-      final response = await http.patch(
+      final response = await devHttpClient.patch(
         Uri.parse('$baseUrl/profile/edit'),
         headers: _headers(),
         body: jsonEncode({
@@ -67,7 +68,7 @@ class ProfileService {
   /// Upload profile picture
   Future<String?> uploadProfilePicture(String filePath) async {
     try {
-      final response = await http.post(
+      final response = await devHttpClient.post(
         Uri.parse('$baseUrl/profile/picture/upload'),
         headers: _headers(),
         // In real app, would use MultipartRequest for file upload
@@ -87,7 +88,7 @@ class ProfileService {
   /// Delete profile picture
   Future<void> deleteProfilePicture() async {
     try {
-      final response = await http.delete(
+      final response = await devHttpClient.delete(
         Uri.parse('$baseUrl/profile/picture'),
         headers: _headers(),
       ).timeout(const Duration(seconds: 10));

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:frontend/features/profile/models/user_profile.dart';
 import 'package:frontend/core/services/api_client.dart';
+import 'package:frontend/core/services/http_client_helper.dart';
 
 /// API service for profile-related HTTP requests
 /// 
@@ -92,7 +93,7 @@ class ProfileApiService {
         headers['Authorization'] = 'Bearer $token';
       }
       
-      final response = await http.get(
+      final response = await devHttpClient.get(
         Uri.parse(url),
         headers: headers,
       ).timeout(
@@ -167,7 +168,7 @@ class ProfileApiService {
         debugPrint('[ProfileApiService] Request body: $body');
       }
       
-      final response = await http.patch(
+      final response = await devHttpClient.patch(
         Uri.parse(url),
         headers: headers,
         body: body,
@@ -338,7 +339,7 @@ class ProfileApiService {
         headers['Authorization'] = 'Bearer $token';
       }
       
-      final response = await http.delete(
+      final response = await devHttpClient.delete(
         Uri.parse(url),
         headers: headers,
       ).timeout(const Duration(seconds: 30));

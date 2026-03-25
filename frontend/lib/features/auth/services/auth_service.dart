@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../core/services/http_client_helper.dart';
 import '../models/auth_models.dart';
 
 /// Custom exception for authentication errors
@@ -24,6 +25,7 @@ class AuthService {
   static const String _backendUrlEnv = String.fromEnvironment('BACKEND_URL');
   static const bool _debugLogs = true; // ENABLED for debugging
   static const Duration _requestTimeout = Duration(seconds: 60); // 60s for slow networks
+  static final http.Client _httpClient = devHttpClient; // Use custom client for cert handling
 
   static void _log(String message) {
     if (_debugLogs) {
@@ -48,7 +50,7 @@ class AuthService {
   static Future<AuthResponse> register(RegistrationRequest request) async {
       _log('[Frontend Register] Sending registration request: email=${request.email}, username=${request.username}');
     try {
-      final response = await http.post(
+      final response = await _httpClient.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(request.toJson()),
@@ -116,7 +118,7 @@ class AuthService {
       final uri = Uri.parse(url);
       print('[AuthService] URL scheme: ${uri.scheme}, host: ${uri.host}, port: ${uri.port}');
       
-      final response = await http.post(
+      final response = await _httpClient.post(
         uri,
         headers: {'Content-Type': 'application/json'},
         body: body,
@@ -182,7 +184,7 @@ class AuthService {
   /// Validate current session (requires token)
   static Future<User> validateSession(String token) async {
     try {
-      final response = await http.get(
+      final response = await _httpClient.get(
         Uri.parse('$baseUrl/auth/me'),
         headers: {
           'Content-Type': 'application/json',
@@ -211,7 +213,7 @@ class AuthService {
   /// Logout (requires token)
   static Future<void> logout(String token) async {
     try {
-      final response = await http.post(
+      final response = await _httpClient.post(
         Uri.parse('$baseUrl/auth/logout'),
         headers: {
           'Content-Type': 'application/json',
