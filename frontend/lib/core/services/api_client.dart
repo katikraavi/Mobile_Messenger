@@ -19,11 +19,12 @@ class ApiClient {
   /// Initialize API client with backend URL
   ///
   /// Priority order for backend URL resolution:
-  /// 1. BACKEND_URL dart-define (injected at build time for APK distribution)
-  /// 2. Hosted production backend: https://mobile-messenger-backend.onrender.com
+  /// 1. API_BASE_URL dart-define (injected at build time for APK distribution)
+  /// 2. BACKEND_URL dart-define (legacy, injected at build time for APK distribution)
+  /// 3. Hosted production backend: https://mobile-messenger.onrender.com
   ///
   /// To build with a custom URL:
-  ///   flutter build apk --dart-define=BACKEND_URL=http://192.168.1.100:8081
+  ///   flutter build apk --dart-define=API_BASE_URL=http://192.168.1.100:8081
   static Future<void> initialize({bool waitForHealthCheck = false}) async {
     if (_isInitialized) {
       return;
@@ -31,13 +32,19 @@ class ApiClient {
 
     _httpClient = http.Client();
 
-    // Prefer compile-time BACKEND_URL (set via --dart-define when building APK for testers)
-    const envUrl = String.fromEnvironment('BACKEND_URL');
-    if (envUrl.isNotEmpty) {
-      _baseUrl = envUrl;
+    // Prefer compile-time API_BASE_URL (set via --dart-define when building APK for testers)
+    const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+    if (apiBaseUrl.isNotEmpty) {
+      _baseUrl = apiBaseUrl;
     } else {
-      // Default to hosted production backend
-      _baseUrl = 'https://mobile-messenger-backend.onrender.com';
+      // Fall back to legacy BACKEND_URL
+      const envUrl = String.fromEnvironment('BACKEND_URL');
+      if (envUrl.isNotEmpty) {
+        _baseUrl = envUrl;
+      } else {
+        // Default to hosted production backend
+        _baseUrl = 'https://mobile-messenger.onrender.com';
+      }
     }
 
     _isInitialized = true;
