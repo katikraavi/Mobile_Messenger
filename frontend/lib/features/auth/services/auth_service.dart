@@ -22,8 +22,8 @@ class AuthService {
   // Priority: API_BASE_URL -> BACKEND_URL -> localhost fallback.
   static const String _apiBaseUrlEnv = String.fromEnvironment('API_BASE_URL');
   static const String _backendUrlEnv = String.fromEnvironment('BACKEND_URL');
-  static const bool _debugLogs = false;
-  static const Duration _requestTimeout = Duration(seconds: 30);
+  static const bool _debugLogs = true; // ENABLED for debugging
+  static const Duration _requestTimeout = Duration(seconds: 60); // 60s for slow networks
 
   static void _log(String message) {
     if (_debugLogs) {
@@ -105,28 +105,47 @@ class AuthService {
   /// Throws [AuthException] on error
   static Future<AuthResponse> login(LoginRequest request) async {
     try {
+      final url = '$baseUrl/auth/login';
+      final body = jsonEncode(request.toJson());
+      
+      print('[AuthService] Starting login request');
+      print('[AuthService] URL: $url');
+      print('[AuthService] Email: ${request.email}');
+      print('[AuthService] Timeout: ${_requestTimeout.inSeconds}s');
+      
+      final uri = Uri.parse(url);
+      print('[AuthService] URL scheme: ${uri.scheme}, host: ${uri.host}, port: ${uri.port}');
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
+        uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(request.toJson()),
+        body: body,
       ).timeout(
         _requestTimeout,
-        onTimeout: () => throw AuthException('Request timeout - check your connection'),
+        onTimeout: () {
+          print('[AuthService] LOGIN REQUEST TIMEOUT after ${_requestTimeout.inSeconds}s');
+          throw AuthException('Request timeout - check your connection', code: 'timeout');
+        },
       );
+
+      print('[AuthService] Got response with status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         try {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
+          print('[AuthService] Login successful, got token');
           return AuthResponse.fromJson(data);
         } catch (parseError) {
-          _log('[AuthService] Error parsing login response: $parseError');
-          _log('[AuthService] Response body: ${response.body}');
+          print('[AuthService] Error parsing login response: $parseError');
+          print('[AuthService] Response body: ${response.body}');
           throw AuthException('Invalid server response - please try again', code: 'parse_error');
         }
       } else if (response.statusCode == 400) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
+        print('[AuthService] Validation error: ${data['error']}');
         throw AuthException(data['error'] as String? ?? 'Validation failed', code: 'validation_error');
       } else if (response.statusCode == 401) {
+        print('[AuthService] Invalid credentials');
         throw AuthException('Invalid email or password', code: 'invalid_credentials');
       } else if (response.statusCode == 403) {
         String message = 'Email not verified. Please verify your email before logging in.';
@@ -139,18 +158,23 @@ class AuthService {
         } catch (_) {
           // Keep default message when response body is not JSON.
         }
+        print('[AuthService] Email not verified: $message');
         throw AuthException(message, code: 'email_not_verified');
       } else if (response.statusCode == 409) {
+        print('[AuthService] User already exists');
         throw AuthException('User already exists', code: 'user_exists');
       } else if (response.statusCode == 429) {
+        print('[AuthService] Rate limited');
         throw AuthException('Too many login attempts. Try again later.', code: 'rate_limit');
       } else {
+        print('[AuthService] Server error: ${response.statusCode} ${response.body}');
         throw AuthException('Server error - please try again later', code: 'server_error');
       }
     } on AuthException {
       rethrow;
-    } catch (e) {
-      _log('[AuthService] Login network error: $e');
+    } catch (e, st) {
+      print('[AuthService] Login error: $e');
+      print('[AuthService] Stack trace: $st');
       throw AuthException('Network error - check your connection', code: 'network_error');
     }
   }

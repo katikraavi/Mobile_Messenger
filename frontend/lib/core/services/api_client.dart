@@ -9,12 +9,15 @@ import 'dart:io';
 /// - Exponential backoff retry logic (5 attempts: 100ms, 500ms, 2s, 5s, 10s)
 /// - Health check endpoint verification
 /// - Base URL configuration for Android/iOS emulator differences
+/// - Support for both HTTP and HTTPS backends
+/// - Extended timeout for slow networks
 
 class ApiClient {
   static String _baseUrl = '';
   static http.Client? _httpClient;
   static bool _isHealthy = false;
   static bool _isInitialized = false;
+  static const bool _debugMode = true; // Enable detailed logging
 
   /// Initialize API client with backend URL
   ///
