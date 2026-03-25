@@ -39,7 +39,7 @@ class AuthService {
     if (_backendUrlEnv.isNotEmpty) {
       return _backendUrlEnv;
     }
-    return 'https://mobile-messenger-backend.onrender.com';
+    return 'https://mobile-messenger.onrender.com';
   }
 
   /// Register a new user
