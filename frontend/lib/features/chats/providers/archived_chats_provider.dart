@@ -15,7 +15,7 @@ final archivedChatsProvider = FutureProvider.family<List<Chat>, String>((ref, to
   try {
     print('[ArchivedChatsProvider] 📡 Fetching archived chats with token: ${token.substring(0, 20)}...');
     
-    const baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8081');
+    const baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://mobile-messenger-backend.onrender.com');
     final chatService = ChatApiService(baseUrl: baseUrl);
     
     final chats = await chatService.fetchArchivedChats(token: token);

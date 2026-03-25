@@ -48,7 +48,7 @@ class ChatListScreen extends ConsumerWidget {
 
     const baseUrl = String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'http://localhost:8081',
+      defaultValue: 'https://mobile-messenger-backend.onrender.com',
     );
     final chatApiService = ChatApiService(baseUrl: baseUrl);
 

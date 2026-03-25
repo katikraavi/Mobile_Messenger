@@ -7,7 +7,7 @@ import './websocket_provider.dart';
 
 const _apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://localhost:8081',
+  defaultValue: 'https://mobile-messenger-backend.onrender.com',
 );
 
 /// Provider to handle message status updates from WebSocket

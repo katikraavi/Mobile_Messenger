@@ -36,7 +36,7 @@ class _ProfileViewScreenState extends State<ProfileViewScreen> {
     _inviteService = InviteApiService(
       baseUrl: const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://localhost:8081',
+        defaultValue: 'https://mobile-messenger-backend.onrender.com',
       ),
     );
   }

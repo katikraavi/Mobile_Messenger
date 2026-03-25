@@ -15,7 +15,7 @@ class ChatNotificationSettingsService {
 
   String get _baseUrl => const String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://localhost:8081',
+        defaultValue: 'https://mobile-messenger-backend.onrender.com',
       );
 
   bool isMutedLocally(String chatId) => _mutedChatIds.contains(chatId);

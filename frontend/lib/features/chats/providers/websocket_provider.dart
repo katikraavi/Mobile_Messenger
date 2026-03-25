@@ -31,7 +31,7 @@ class WebSocketNotifier extends StateNotifier<MessageWebSocketService> {
           .replaceFirst('http://', 'ws://');
     }
 
-    return 'ws://localhost:8081';
+    return 'wss://mobile-messenger-backend.onrender.com';
   }
 
   /// Connect to WebSocket
