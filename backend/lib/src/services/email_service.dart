@@ -391,10 +391,12 @@ This link expires in $expiresIn. For security reasons, you can only use this lin
       for (final cc in message.cc) msg.ccRecipients.add(cc);
       for (final bcc in message.bcc) msg.bccRecipients.add(bcc);
 
+      // Use shorter timeout for email sending since it runs async now
+      // fail fast if SMTP is unresponsive
       await send(msg, smtpServer).timeout(
-        const Duration(seconds: 120),
+        const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException(
-          'SMTP send timed out after 120 seconds',
+          'SMTP connection timeout after 30 seconds',
         ),
       );
       print('[✓] Email sent to ${message.to}: ${message.subject}');
