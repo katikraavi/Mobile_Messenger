@@ -88,7 +88,7 @@ class MediaUploadService {
           baseUrl ??
           const String.fromEnvironment(
             'API_BASE_URL',
-            defaultValue: 'https://mobile-messenger-backend.onrender.com',
+            defaultValue: 'https://mobile-messenger.onrender.com',
           );
 
   /// Upload media file (T074)

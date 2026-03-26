@@ -122,7 +122,7 @@ class MessageWebSocketService {
           baseUrl ??
           const String.fromEnvironment(
             'WS_BASE_URL',
-            defaultValue: 'wss://mobile-messenger-backend.onrender.com',
+            defaultValue: 'wss://mobile-messenger.onrender.com',
           );
       final wsUrl = Uri.parse('$resolvedBaseUrl/ws/messages?token=$token');
 

@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/chat_invite_model.dart';
 import '../../../utils/secure_storage_wrapper.dart';
+import '../../../core/services/http_client_helper.dart';
 import 'invite_error_handler.dart';
 
 /// API service for invite-related HTTP operations

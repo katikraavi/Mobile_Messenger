@@ -8,7 +8,7 @@ final chatApiServiceProvider = Provider((ref) {
   return ChatApiService(
     baseUrl: const String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'https://mobile-messenger-backend.onrender.com',
+      defaultValue: 'https://mobile-messenger.onrender.com',
     ),
   );
 });

@@ -55,7 +55,7 @@ class SendMessageNotifier extends StateNotifier<SendMessageState> {
 
   static const _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mobile-messenger-backend.onrender.com',
+    defaultValue: 'https://mobile-messenger.onrender.com',
   );
 
   /// Send a message to a chat with optimistic updates (T027)

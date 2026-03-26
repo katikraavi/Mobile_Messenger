@@ -7,7 +7,7 @@ final mediaUploadServiceProvider = Provider<MediaUploadService>((ref) {
   return MediaUploadService(
     baseUrl: const String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'https://mobile-messenger-backend.onrender.com',
+      defaultValue: 'https://mobile-messenger.onrender.com',
     ),
   );
 });

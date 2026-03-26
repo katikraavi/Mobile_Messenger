@@ -333,7 +333,7 @@ class MessageBubble extends StatelessWidget {
 
     const baseUrl = String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'https://mobile-messenger-backend.onrender.com',
+      defaultValue: 'https://mobile-messenger.onrender.com',
     );
 
     if (mediaUrl.startsWith('/')) {

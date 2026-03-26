@@ -6,7 +6,7 @@ import '../../../core/services/http_client_helper.dart';
 class ProfileService {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mobile-messenger-backend.onrender.com',
+    defaultValue: 'https://mobile-messenger.onrender.com',
   );
   final String? authToken;
 

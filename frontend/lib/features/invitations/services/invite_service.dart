@@ -60,7 +60,7 @@ class Invite {
 class InviteService {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mobile-messenger-backend.onrender.com',
+    defaultValue: 'https://mobile-messenger.onrender.com',
   );
   static const Duration defaultTimeout = Duration(seconds: 30);
   static const int maxRetries = 3;
@@ -84,13 +84,45 @@ class InviteService {
         return [];
       }
 
-      final response = await _client.get(
-        Uri.parse('$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}'),
+      final token = await _getAuthToken();
+      final headers = _buildHeaders(token);
+
+      // Primary route used by the hosted backend.
+      var response = await _client.get(
+        Uri.parse('$baseUrl/search/username?q=${Uri.encodeQueryComponent(query)}'),
+        headers: headers,
       );
 
+      // Legacy fallback retained for compatibility with older environments.
+      if (response.statusCode == 404) {
+        response = await _client.get(
+          Uri.parse('$baseUrl/api/users/search?q=${Uri.encodeQueryComponent(query)}'),
+          headers: headers,
+        );
+      }
+
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((json) => User.fromJson(json as Map<String, dynamic>)).toList();
+        final decoded = jsonDecode(response.body);
+
+        final List<dynamic> items;
+        if (decoded is List<dynamic>) {
+          items = decoded;
+        } else if (decoded is Map<String, dynamic> && decoded['data'] is List<dynamic>) {
+          items = decoded['data'] as List<dynamic>;
+        } else {
+          return [];
+        }
+
+        return items.map((json) {
+          final map = json as Map<String, dynamic>;
+          final normalized = <String, dynamic>{
+            'id': map['id'] ?? map['userId'] ?? '',
+            'username': map['username'] ?? '',
+            'email': map['email'] ?? '',
+            'profilePictureUrl': map['profilePictureUrl'],
+          };
+          return User.fromJson(normalized);
+        }).toList();
       } else if (response.statusCode == 404) {
         return [];
       } else {

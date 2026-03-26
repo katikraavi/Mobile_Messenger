@@ -7,9 +7,9 @@ class AppConfig {
   static const String appVersion = '1.0.0';
   
   // Backend configuration
-  static const String backendUrlAndroid = 'https://mobile-messenger-backend.onrender.com'; // Production hosted backend
-  static const String backendUrlIOS = 'https://mobile-messenger-backend.onrender.com'; // Production hosted backend  
-  static const String backendUrlPhysicalDevice = 'https://mobile-messenger-backend.onrender.com'; // Production hosted backend
+  static const String backendUrlAndroid = 'https://mobile-messenger.onrender.com'; // Production hosted backend
+  static const String backendUrlIOS = 'https://mobile-messenger.onrender.com'; // Production hosted backend  
+  static const String backendUrlPhysicalDevice = 'https://mobile-messenger.onrender.com'; // Production hosted backend
   
   // API configuration
   static const int connectionTimeoutSeconds = 30;

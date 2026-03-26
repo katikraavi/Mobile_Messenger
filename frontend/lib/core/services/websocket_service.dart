@@ -51,7 +51,7 @@ class WebSocketService {
           url ??
           '${const String.fromEnvironment(
             'WS_BASE_URL',
-            defaultValue: 'wss://mobile-messenger-backend.onrender.com',
+            defaultValue: 'wss://mobile-messenger.onrender.com',
           )}/ws/messages';
 
       debugPrint('[WebSocketService] Connecting to $resolvedUrl');

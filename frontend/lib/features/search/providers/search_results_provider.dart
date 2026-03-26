@@ -66,7 +66,7 @@ final searchServiceProvider = Provider((ref) {
   // Get base URL from config (or use default)
   const baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mobile-messenger-backend.onrender.com',
+    defaultValue: 'https://mobile-messenger.onrender.com',
   );
   
   // Get auth token from secure storage
@@ -89,7 +89,7 @@ final searchServiceProvider = Provider((ref) {
 final searchServiceWithTokenProvider = FutureProvider((ref) async {
   const baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://mobile-messenger-backend.onrender.com',
+    defaultValue: 'https://mobile-messenger.onrender.com',
   );
   
   // Get token asynchronously

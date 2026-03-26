@@ -97,6 +97,71 @@ _DatabaseConfig _resolveDatabaseConfig() {
   );
 }
 
+Future<void> _ensureAuthSchemaCompatibility(Connection database) async {
+  try {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS "users" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT UNIQUE NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT,
+        email_verified BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_login_at TIMESTAMP,
+        verified_at TIMESTAMP
+      );
+    ''');
+
+    await database.execute(
+      'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS password_hash TEXT',
+    );
+    await database.execute(
+      'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE',
+    );
+    await database.execute(
+      'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()',
+    );
+    await database.execute(
+      'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP',
+    );
+    await database.execute(
+      'ALTER TABLE "users" ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP',
+    );
+
+    final passwordCol = await database.query(
+      '''SELECT 1
+         FROM information_schema.columns
+         WHERE table_name = 'users' AND column_name = 'password'
+         LIMIT 1''',
+    );
+
+    if (passwordCol.isNotEmpty) {
+      await database.execute(
+        "UPDATE \"users\" SET password_hash = password WHERE (password_hash IS NULL OR password_hash = '') AND password IS NOT NULL",
+      );
+      print('[Schema] Migrated legacy users.password into users.password_hash');
+    }
+
+    await database.execute(
+      'UPDATE "users" SET email_verified = FALSE WHERE email_verified IS NULL',
+    );
+
+    await database.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON "users"(email)',
+    );
+    await database.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON "users"(username)',
+    );
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_users_email_verified ON "users"(email_verified)',
+    );
+
+    print('[✓] Auth schema compatibility checks completed');
+  } catch (e) {
+    print('[WARNING] Auth schema compatibility check failed: $e');
+  }
+}
+
 void main() async {
   final port = int.parse(
     Platform.environment['SERVERPOD_PORT'] ??
@@ -137,6 +202,9 @@ void main() async {
     print('[ERROR] Migration failed: $e');
     rethrow;
   }
+
+  // Guard against legacy/stale production schemas to avoid auth 500s.
+  await _ensureAuthSchemaCompatibility(dbConnection);
 
   // Always ensure test users exist in database (for testing on all environments)
   print('[INFO] Ensuring test users exist in database...');
